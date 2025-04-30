@@ -52,10 +52,11 @@ if __name__ == "__main__":
     print("\n🚀 Starting Probing...\n")
     
     # Example interface, replace with your actual interface
-    # iface = "enxa0cec88b5c4b"
-    iface = "wlp0s20f3"
+    iface = "enxa0cec88b5c4b"
+    # iface = "wlp0s20f3"
     # Call passive probing
-    passive.passive_probing(iface,data,True)
+    # passive.passive_probing(iface,data,True)
     # Call active probing (to be implemented)
-    # active_probing()
+    scan_type = ['active','passive','arp','icmp', 'tcp']
+    active.active_probing(iface,scan_type=scan_type,data=data,log=True)
 

@@ -1,5 +1,39 @@
 # probing/definitions.py
 
+###############################################################
+# x. Probing Tool Definitions
+###############################################################
+
+SCAN_TYPES = {
+    -1: "all",
+    0:  "passive",
+    1:  "active",
+    2:  "mac",
+    3:  "ip",
+    4:  "arp",
+    5:  "icmp",
+    6:  "tcp",
+    7:  "udp",
+}
+SCAN_TYPES.update({v: k for k,v in SCAN_TYPES.items()})
+
+class Ciface:
+    def __init__(self,mac,ip,gw,msk,net,name):
+        self.mac = mac
+        self.ip = ip
+        self.gw = gw
+        self.msk = msk
+        self.net = net
+        self.name = name
+
+    def __str__(self):
+        return f"{self.name} - MAC: {self.mac}; IP: {self.ip}; GW: {self.gw}; MSK: {self.msk}; Net: {self.net}"
+
+###############################################################
+# x. Protocol Definitions
+###############################################################
+
+
 ETHER_TYPES = {
     0x0800:"IPv4"        , # IP (IPv4)                                   
     0x0805:"X25"         , #                                             
@@ -171,3 +205,148 @@ IPV6NHCLS = {
     60: "IPv6ExtHdrDestOpt"
 }
 IPV6NHCLS.update({v: k for k, v in IPV6NHCLS.items()})  # Reverse mapping for lookup
+
+ICMP_TYPES = {
+    0: "echo-reply",
+    3: "dest-unreach",
+    4: "source-quench",
+    5: "redirect",
+    8: "echo-request",
+    9: "router-advertisement",
+    10: "router-solicitation",
+    11: "time-exceeded",
+    12: "parameter-problem",
+    13: "timestamp-request",
+    14: "timestamp-reply",
+    15: "information-request",
+    16: "information-response",
+    17: "address-mask-request",
+    18: "address-mask-reply",
+    30: "traceroute",
+    31: "datagram-conversion-error",
+    32: "mobile-host-redirect",
+    33: "ipv6-where-are-you",
+    34: "ipv6-i-am-here",
+    35: "mobile-registration-request",
+    36: "mobile-registration-reply",
+    37: "domain-name-request",
+    38: "domain-name-reply",
+    39: "skip",
+    40: "photuris"
+}
+ICMP_TYPES.update({v: k for k,v in ICMP_TYPES.items()}) # Reverse mapping for lookup
+
+ICMP_CODES = {
+    3: {
+        0: "network-unreachable",
+        1: "host-unreachable",
+        2: "protocol-unreachable",
+        3: "port-unreachable",
+        4: "fragmentation-needed",
+        5: "source-route-failed",
+        6: "network-unknown",
+        7: "host-unknown",
+        9: "network-prohibited",
+        10: "host-prohibited",
+        11: "TOS-network-unreachable",
+        12: "TOS-host-unreachable",
+        13: "communication-prohibited",
+        14: "host-precedence-violation",
+        15: "precedence-cutoff", 
+    },
+    5: {
+        0: "network-redirect",
+        1: "host-redirect",
+        2: "TOS-network-redirect",
+        3: "TOS-host-redirect", 
+    },
+    11: {
+        0: "ttl-zero-during-transit",
+        1: "ttl-zero-during-reassembly", 
+    },
+    12: {
+        0: "ip-header-bad",
+        1: "required-option-missing", 
+    },
+    40: {
+        0: "bad-spi",
+        1: "authentication-failed",
+        2: "decompression-failed",
+        3: "decryption-failed",
+        4: "need-authentification",
+        5: "need-authorization", 
+    },
+    "_reverse": {}
+}
+
+for icmp_type, codes in ICMP_CODES.items():
+    if icmp_type == "_reverse":
+        continue
+    for code, description in codes.items():
+        ICMP_CODES["_reverse"][description] = (icmp_type, code) # Reverse mapping for lookup
+
+
+ICMPv6_TYPES = {
+    1: "Destination unreachable",
+    2: "Packet too big",
+    3: "Time exceeded",
+    4: "Parameter problem",
+    100: "Private Experimentation",
+    101: "Private Experimentation",
+    128: "Echo Request",
+    129: "Echo Reply",
+    130: "MLD Query",
+    131: "MLD Report",
+    132: "MLD Done",
+    133: "Router Solicitation",
+    134: "Router Advertisement",
+    135: "Neighbor Solicitation",
+    136: "Neighbor Advertisement",
+    137: "Redirect Message",
+    138: "Router Renumbering",
+    139: "ICMP Node Information Query",
+    140: "ICMP Node Information Response",
+    141: "Inverse Neighbor Discovery Solicitation Message",
+    142: "Inverse Neighbor Discovery Advertisement Message",
+    143: "MLD Report Version 2",
+    144: "Home Agent Address Discovery Request Message",
+    145: "Home Agent Address Discovery Reply Message",
+    146: "Mobile Prefix Solicitation",
+    147: "Mobile Prefix Advertisement",
+    148: "Certification Path Solicitation",
+    149: "Certification Path Advertisement",
+    151: "Multicast Router Advertisement",
+    152: "Multicast Router Solicitation",
+    153: "Multicast Router Termination",
+    155: "RPL Control Message",
+    200: "Private Experimentation",
+    201: "Private Experimentation"
+}
+ICMPv6_TYPES.update({v: k for k,v in ICMPv6_TYPES.items()}) # Reverse mapping for lookup
+
+ICMPv6_CODES = {
+    1: {
+        0: "No route to destination",
+        1: "Communication with destination administratively prohibited",  # noqa: E501
+        2: "Beyond scope of source address",  # noqa: E501
+        3: "Address unreachable",
+        4: "Port unreachable"
+    },
+    2: {
+        0: "hop limit exceeded in transit",  # noqa: E501
+        1: "fragment reassembly time exceeded"
+    },
+    4: {
+        0: "erroneous header field encountered",
+        1: "unrecognized Next Header type encountered",
+        2: "unrecognized IPv6 option encountered",
+        3: "first fragment has incomplete header chain"
+    },
+    '_reverse': {},
+}
+
+for icmp_type, codes in ICMPv6_CODES.items():
+    if icmp_type == "_reverse":
+        continue
+    for code, description in codes.items():
+        ICMPv6_CODES["_reverse"][description] = (icmp_type, code) # Reverse mapping for lookup

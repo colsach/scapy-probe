@@ -18,6 +18,8 @@ from scapy.layers import l2, inet, inet6
 from .definitions import *
 from .packet_logger import *
 
+# TODO: Dot1Q, MVRP, Dot3, LLC, SNAP, DHCP, ICMPv6, IGMP, MLD, NDP, STP, RSTP, MSTP, LLDP, LLTD
+
 def passive_probing(iface:str,data:Optional[dict]=None,log:Optional[bool]=None):
     """
     """
@@ -75,17 +77,6 @@ def handle_Ether(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
         handle_Dot1Q(pkt,data,log)
         return
 
-def handle_Dot1Q(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
-    """
-    """
-    # TODO: logging & Protocol switch case
-    if isinstance(log,bool) and log == True:
-        prio = pkt[Dot1Q].prio
-        dei = pkt[Dot1Q].dei
-        vlan = pkt[Dot1Q].vlan
-        t = ETHER_TYPES[pkt[Dot1Q].type] if pkt[Dot1Q].type in ETHER_TYPES else f"0x{pkt[Dot1Q].type:x}"
-        print(f"VLAN Packet: {pkt[Ether].src} -> {pkt[Ether].dst}; VID: {vlan}; Prio: {prio}; DEI: {dei}; type: {t}")
-
 def handle_Dot3(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
     """
     """
@@ -96,6 +87,22 @@ def handle_Dot3(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
         len = pkt[Dot3].len
         print(f"Dot3 Packet: {src} -> {dst}; Length: {len}")
 
+    if isinstance(data,dict):
+        add_sum_layer(data,pkt[Dot3].src,'Dot3')
+
+    if pkt.haslayer(LLC):
+        hanlde_LLC(pkt,data,log)
+
+def handle_Dot1Q(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
+    """
+    """
+    # TODO: logging & Protocol switch case
+    if isinstance(log,bool) and log == True:
+        prio = pkt[Dot1Q].prio
+        dei = pkt[Dot1Q].dei
+        vlan = pkt[Dot1Q].vlan
+        t = ETHER_TYPES[pkt[Dot1Q].type] if pkt[Dot1Q].type in ETHER_TYPES else f"0x{pkt[Dot1Q].type:x}"
+        print(f"VLAN Packet: {pkt[Ether].src} -> {pkt[Ether].dst}; VID: {vlan}; Prio: {prio}; DEI: {dei}; type: {t}")
 
 ###############################################################
 # x. Layer 2.5
@@ -184,8 +191,9 @@ def handle_IPv6(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
         add_sum_src_ip(data,pkt[Ether].src,pkt[IPv6].src)
         add_sum_dst_ip(data,pkt[Ether].src,pkt[IPv6].dst)
         add_sum_prtcl(data,pkt[Ether].src,pkt[IPv6].nh)
-
-    if pkt[IPv6].nh == IPV6NH['TCP']:
+    if pkt[IPv6].nh == IPV6NH['ICMPv6']:
+        handle_ICMPv6(pkt,data,log)
+    elif pkt[IPv6].nh == IPV6NH['TCP']:
         handle_TCP(pkt,data,log)
     elif pkt[IPv6].nh == IPV6NH['UDP']:
         handle_UDP(pkt,data,log)
@@ -193,7 +201,6 @@ def handle_IPv6(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
 def handle_ICMP(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
     """
     """
-    # TODO: data loging
     if isinstance(log,bool) and log == True:
         t = pkt[ICMP].type
         code = pkt[ICMP].code
@@ -215,6 +222,26 @@ def handle_ICMP(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
     
     if isinstance(data,dict):
         add_sum_layer(data,pkt[Ether].src,"ICMP")
+        add_icmp(data, pkt[Ether].src, pkt[Ether].dst, pkt[IP].dst, pkt[ICMP].type, pkt[ICMP].code, raw(pkt).hex())
+
+def handle_ICMPv6(pkt, data:Optional[dict]=None, log:Optional[bool]=None):
+    """
+    """
+    if isinstance(log,bool) and log == True:
+        icmp_layer = bytes(pkt[IPv6].payload)
+        src = pkt[IPv6].src
+        dst = pkt[IPv6].dst
+        t = icmp_layer[0]
+        code = icmp_layer[1]
+        print(f"ICMPv6 Packet: {src} -> {dst}; Type: {t}; Code: {code}")
+
+    
+    if isinstance(data,dict):
+        icmp_layer = bytes(pkt[IPv6].payload)
+        add_sum_layer(data,pkt[Ether].src,"ICMPv6")
+        add_sum_src_ip(data,pkt[Ether].src,pkt[IPv6].src)
+        add_sum_dst_ip(data,pkt[Ether].src,pkt[IPv6].dst)
+        add_icmp(data, pkt[Ether].src, pkt[Ether].dst, pkt[IPv6].dst, icmp_layer[0], icmp_layer[1], raw(pkt).hex())
 
 def handle_IGMP(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
     """

@@ -44,7 +44,7 @@ def check_protocol(ip_version:str,prtcl:str):
     elif ip_version == 'IPv4':
         return IP_PROTOCOLS[prtcl] if prtcl in IP_PROTOCOLS else prtcl
     else:
-        return 'unkown ip'
+        return 'unknown'
 
 ###############################################################
 # 2. Saving functions
@@ -141,7 +141,6 @@ def add_sum_vlan_id(data:dict,mac:str, vid:int):
     if vid not in data[mac]['summary']['vids']:
         data[mac]['summary']['vids'].append(vid)
 
-
 ###############################################################
 # 4. Transport Packet functions (Ether/IP/TCP or UDP)
 ###############################################################
@@ -159,12 +158,7 @@ def add_ether_type(data:dict,mac:str,dst_mac:str,ethertype:int):
     """
     """
     add_dst_mac(data,mac,dst_mac)
-
-    # if ethertype not in data[mac][dst_mac]:
-    #     if ethertype not in ETHER_TYPES:
-    #         data[mac][dst_mac][str(ethertype)] = {}
-    #     else:
-    #         data[mac][dst_mac][ ETHER_TYPES[ethertype]] = {}
+    
     if ethertype not in ETHER_TYPES:
         if str(ethertype) not in data[mac][dst_mac]:
             data[mac][dst_mac][str(ethertype)] = {}
@@ -234,6 +228,30 @@ def add_ip_prtcl_unknown(data:dict,mac:str,dst_mac:str,ip:str,prtcl:int,raw:str)
     if raw not in data[mac][dst_mac][ip_version][ip][proto]:
         data[mac][dst_mac][ip_version][ip][proto].append(raw)
 
+def add_icmp(data:dict, mac:str, dst_mac:str, ip:str, icmp_type:int, icmp_code:int, raw:str):
+    """
+    """
+    ip_version = check_ip_version(ip)
+    if ip_version == 'IPv4':
+        prtcl = IP_PROTOCOLS['icmp']
+        types = ICMP_TYPES[icmp_type] if icmp_type in ICMP_TYPES else icmp_type
+        codes = ICMP_CODES if icmp_type in ICMP_CODES and icmp_code in ICMP_CODES[icmp_type] else icmp_code
+    else:
+        prtcl = IPV6NH['ICMPv6']
+        types = ICMPv6_TYPES[icmp_type] if icmp_type in ICMPv6_TYPES else icmp_type
+        codes = ICMPv6_CODES[icmp_type][icmp_code] if icmp_type in ICMPv6_CODES and icmp_code in ICMPv6_CODES[icmp_type] else icmp_code
+    
+    add_ip_prtcl(data,mac,dst_mac,ip,prtcl)
+    proto = check_protocol(ip_version,prtcl)
+    
+    if types not in data[mac][dst_mac][ip_version][ip][proto]:
+        data[mac][dst_mac][ip_version][ip][proto][types] = {}
+
+    if codes not in data[mac][dst_mac][ip_version][ip][proto][types]:
+        data[mac][dst_mac][ip_version][ip][proto][types][codes] = []
+    
+    if raw not in data[mac][dst_mac][ip_version][ip][proto][types][codes]:
+        data[mac][dst_mac][ip_version][ip][proto][types][codes].append(raw)
 
 def add_dst_port(data:dict,mac:str,dst_mac:str,ip:str,prtcl:int,dport:int):
     """
