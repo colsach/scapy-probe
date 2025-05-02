@@ -1,6 +1,11 @@
 # probing/packet_logger.py
 import json
 from .definitions import *
+
+# TODO: seperate active & passiv probing
+# TODO: Make it a class
+# TODO: Generify it
+
 ###############################################################
 # 1. Initializer
 ###############################################################
@@ -15,6 +20,7 @@ def init_new_mac(data:dict, mac:str):
     """
     if mac not in data:
         data[mac] = {}
+
 
 def init_new_sum(data:dict,mac:str):
     """
@@ -279,5 +285,34 @@ def add_raw_data(data:dict,mac:str,dst_mac:str,ip:str,prtcl:int,dport:int,raw:st
 
 
 ###############################################################
-# 4. Transport Packet functions (Ether/IP/TCP or UDP)
+# 5. Scanner functions (port, ip, mac scan ...)
 ###############################################################
+
+def add_port_scan(data:dict, mac:str, dst_mac:str, dst_ip:str, ports:dict):
+    """
+    """
+    add_ip(data,mac,dst_mac,dst_ip)
+    ip_version = check_ip_version(dst_ip)
+
+    if 'ports' not in data[mac][dst_mac][ip_version][dst_ip]:
+        data[mac][dst_mac][ip_version][dst_ip]['ports'] = {}
+    
+    for key in ports:
+        # if ports[key] == 1 and int(key) not in data[mac][dst_mac][ip_version][dst_ip]['ports']:
+        if key not in data[mac][dst_mac][ip_version][dst_ip]['ports']:
+            data[mac][dst_mac][ip_version][dst_ip]['ports'][key] = ports[key]
+
+def add_ping_scan(data):
+    """
+    """
+    pass
+
+def add_arp_scan():
+    """
+    """
+    pass
+
+def add_mac_scan():
+    """
+    """
+    pass
