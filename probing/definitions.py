@@ -286,7 +286,7 @@ for icmp_type, codes in ICMP_CODES.items():
         ICMP_CODES["_reverse"][description] = (icmp_type, code) # Reverse mapping for lookup
 
 
-ICMPv6_TYPES = {
+ICMPV6_TYPES = {
     1: "Destination unreachable",
     2: "Packet too big",
     3: "Time exceeded",
@@ -322,9 +322,9 @@ ICMPv6_TYPES = {
     200: "Private Experimentation",
     201: "Private Experimentation"
 }
-ICMPv6_TYPES.update({v: k for k,v in ICMPv6_TYPES.items()}) # Reverse mapping for lookup
+ICMPV6_TYPES.update({v: k for k,v in ICMPV6_TYPES.items()}) # Reverse mapping for lookup
 
-ICMPv6_CODES = {
+ICMPV6_CODES = {
     1: {
         0: "No route to destination",
         1: "Communication with destination administratively prohibited",  # noqa: E501
@@ -345,8 +345,8 @@ ICMPv6_CODES = {
     '_reverse': {},
 }
 
-for icmp_type, codes in ICMPv6_CODES.items():
+for icmp_type, codes in ICMPV6_CODES.items():
     if icmp_type == "_reverse":
         continue
     for code, description in codes.items():
-        ICMPv6_CODES["_reverse"][description] = (icmp_type, code) # Reverse mapping for lookup
+        ICMPV6_CODES["_reverse"][description] = (icmp_type, code) # Reverse mapping for lookup

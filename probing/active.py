@@ -64,6 +64,10 @@ def active_probing(iface:str, scan_type:Optional[list]=None, data:Optional[dict]
     # handle_TCP_active(ciface,data,log)
     ping_scan(ciface,log)
 
+
+    # TODO: Add MAC, ARP scanning
+    # Info: First determine MAC addresses, then IPs of each MAC address and finally scan ports of each IP address
+    
     if SCAN_TYPES['mac'] in scan_type or 'mac' in scan_type:
         return
     if SCAN_TYPES['ip'] in scan_type or 'ip' in scan_type:
@@ -185,7 +189,7 @@ def ports_scan(ciface:Ciface,dst_mac:str,dst_ip:str,port_range:Optional[int|list
         #         else:
         #             data[str(pkt[1][TCP].dport)] = -1
         
-    print(data)
+    # print(data)
     return dict(sorted(data.items(), key=lambda item: int(item[0])))
 
 def ping_scan(ciface:Ciface,log:Optional[bool]=None):
