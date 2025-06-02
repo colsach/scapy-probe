@@ -1,5 +1,5 @@
 # probing/definitions.py
-
+import resource
 ###############################################################
 # x. Probing Tool Definitions
 ###############################################################
@@ -17,17 +17,9 @@ SCAN_TYPES = {
 }
 SCAN_TYPES.update({v: k for k,v in SCAN_TYPES.items()})
 
-class Ciface:
-    def __init__(self,mac,ip,gw,msk,net,name):
-        self.mac = mac
-        self.ip = ip
-        self.gw = gw
-        self.msk = msk
-        self.net = net
-        self.name = name
-
-    def __str__(self):
-        return f"{self.name} - MAC: {self.mac}; IP: {self.ip}; GW: {self.gw}; MSK: {self.msk}; Net: {self.net}"
+MAX_WORKERS = 100
+WIN_MAX_WORKERS = 64
+MAX_IPS = 2000
 
 ###############################################################
 # x. Protocol Definitions
@@ -71,7 +63,7 @@ ETHER_TYPES = {
     0x8915:"ROCE"        , # RDMA over Converged Ethernet                
     0xA0ED:"LoWPAN"      , # LoWPAN encapsulation
 }
-ETHER_TYPES.update({v: k for k, v in ETHER_TYPES.items()})  # Reverse mapping for lookup
+ETHER_TYPES_R = {v: k for k, v in ETHER_TYPES.items()}  # Reverse mapping for lookup
 
 HARDWARE_TYPES = {
     1: "Ethernet (10Mb)",
@@ -237,6 +229,7 @@ ICMP_TYPES = {
 ICMP_TYPES.update({v: k for k,v in ICMP_TYPES.items()}) # Reverse mapping for lookup
 
 ICMP_CODES = {
+    0: { 0: "echo-reply" },
     3: {
         0: "network-unreachable",
         1: "host-unreachable",
@@ -350,3 +343,43 @@ for icmp_type, codes in ICMPV6_CODES.items():
         continue
     for code, description in codes.items():
         ICMPV6_CODES["_reverse"][description] = (icmp_type, code) # Reverse mapping for lookup
+
+
+ICMPV6_ND_OPT = {
+    1: "Source Link-Layer Address",
+    2: "Target Link-Layer Address",
+    3: "Prefix Information",
+    4: "Redirected Header",
+    5: "MTU",
+    6: "NBMA Shortcut Limit Option",  # RFC2491
+    7: "Advertisement Interval Option",
+    8: "Home Agent Information Option",
+    9: "Source Address List",
+    10: "Target Address List",
+    11: "CGA Option",            # RFC 3971
+    12: "RSA Signature Option",  # RFC 3971
+    13: "Timestamp Option",      # RFC 3971
+    14: "Nonce option",          # RFC 3971
+    15: "Trust Anchor Option",   # RFC 3971
+    16: "Certificate Option",    # RFC 3971
+    17: "IP Address Option",                             # RFC 4068
+    18: "New Router Prefix Information Option",          # RFC 4068
+    19: "Link-layer Address Option",                     # RFC 4068
+    20: "Neighbor Advertisement Acknowledgement Option",
+    21: "CARD Request Option",  # RFC 4065/4066/4067
+    22: "CARD Reply Option",   # RFC 4065/4066/4067
+    23: "MAP Option",          # RFC 4140
+    24: "Route Information Option",  # RFC 4191
+    25: "Recursive DNS Server Option",
+    26: "IPv6 Router Advertisement Flags Option"
+}
+ICMPV6_ND_OPT.update({v: k for k,v in ICMPV6_ND_OPT.items()}) # Reverse mapping for lookup
+
+
+NDP_TYPES = {
+    0:'RS',
+    1:'RA',
+    2:'NS',
+    3:'NA',
+}
+NDP_TYPES.update({v: k for k,v in NDP_TYPES.items()}) # Reverse mapping for lookup

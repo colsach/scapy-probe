@@ -1,84 +1,108 @@
 # probing/passive.py
 from typing import Optional
 from scapy.all import *
-from scapy.layers import l2, inet, inet6
-# from scapy.layers.l2 import (
-#     Ether,
-#     Dot3,
-#     ARP,
-#     LLC,
-#     SNAP,
-#     Dot1Q
-# )
-# from scapy.layers.inet import (
-#     IP,
-#     TCP,
-#     UDP
-# )
+from scapy.layers import inet, inet6
 from .definitions import *
 from .packet_logger import *
 
-# TODO: Dot1Q, MVRP, Dot3, LLC, SNAP, DHCP, ICMPv6, IGMP, MLD, NDP, STP, RSTP, MSTP, LLDP, LLTD
-
-def passive_probing(iface:str,data:Optional[dict]=None,log:Optional[bool]=None):
+def passive_probing(iface:CustomIfaces,stop_event,data:PacketLogger,log:Optional[bool]=None):
     """
-    """
+    Passive probing function to sniff and log packets on the specified interface.
 
+    :param iface: Network interface to sniff on
+    :param stop_event: Event to stop sniffing
+    :param data: PacketLogger object to log packets
+    :param log: Boolean to indicate whether to log packets in shell or not
+    """
     if data != None:
-        print(f"\n[*] Passive Probing: Sniffing and logging packets on interface {iface}...\n")
+        print(f"\n[*] Passive Probing: Sniffing and logging packets on interface {iface.print_iface_names()}...\n")
+        # data.__context.dtype = 'passive'
     else:
-        print(f"\n[*] Passive Probing: Sniffing and displaying packets on interface {iface}...\n")
+        print(f"\n[*] Passive Probing: Sniffing and displaying packets on interface {iface.print_iface_names()}...\n")
+    # conf.layers.filter([Ether, Dot3, Dot1Q, IP, IPv6, ARP, ICMP, inet6.ICMPv6ND_NA,inet6.ICMPv6ND_NS,inet6.ICMPv6ND_RA,inet6.ICMPv6ND_RS, TCP, UDP])
+    ifaces = iface.get_ifaces_names()
+    if len(ifaces) == 1:
+        ifaces = ifaces[0]
+    print(f"[*] Sniffing on interface(s): {ifaces}")
+    try:
+        sniff(iface=ifaces, prn=lambda pkt: passive_handle(pkt,data,log), stop_filter=lambda pkt: stop_sniffing(pkt,stop_event))
+    except Exception as e:
+        print(f"[*] Error while sniffing: {e}")
+        if data != None:
+            data.save_to_json()
+        else:
+            print("[*] No data to save.")
 
-    # Ignoring packets sent by this devices
-    # mac = get_if_hwaddre(iface)
-    # print(f"Ignonring packets sent by this device: {mac}")
+def stop_sniffing(pkt,stop_event) -> bool:
+    """
+    Stop sniffing packets.
+    :param pkt: Sniffed packet
+    :param stop_event: Event to stop sniffing
+    :return: True if stop event is set, False otherwise
+    """
+    # print("\n[*] Stopping sniffing...")
+    return stop_event.is_set()
+    # return False
 
-    sniff(iface=iface, prn=lambda pkt: passive_handle(pkt,data,log))
-
-
-def passive_handle(pkt, data:Optional[dict]=None, log: Optional[bool]=None):
+def passive_handle(pkt, data:PacketLogger, log: Optional[bool]=None) -> None:
     """
     Handle the sniffed packets.
+    :param pkt: Sniffed packet
+    :param data: PacketLogger object to log packets
+    :param log: Boolean to indicate whether to log packets in shell or not
+    :return: None
+    :note: This function is called by passive_probing() for each sniffed packet
     """
     if pkt.haslayer(Ether):
         handle_Ether(pkt,data,log)
     elif pkt.haslayer(Dot3):
         handle_Dot3(pkt,data,log)
-    else:
-        t = "Unknown"
+    
+    return
 
 ###############################################################
 # x. Layer 2 (Ether, Dot3, ...)
 ###############################################################
-def handle_Ether(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
+def handle_Ether(pkt,data:PacketLogger,log:Optional[bool]=None) -> None:
     """
     Handle Ethernet packets.
+    :param pkt: Sniffed packet
+    :param data: PacketLogger object to log packets
+    :param log: Boolean to indicate whether to log packets in shell or not
+    :return: None
+    :note: This function is called by passive_handle()
     """
-    # TODO: Change Ether type detection
+    src = pkt[Ether].src
+    dst = pkt[Ether].dst
+    tp = pkt[Ether].type
     if isinstance(log,bool) and log == True:
-        if pkt[Ether].type in ETHER_TYPES:
-            t = ETHER_TYPES[pkt[Ether].type]
-        else:
-            t = f"0x{pkt[Ether].type:x}"
-        print(f"Ethernet Packet: {pkt[Ether].src} -> {pkt[Ether].dst}; Type: {t}")
+        t = ETHER_TYPES[tp] if tp in ETHER_TYPES else f"0x{tp:x}"
+        print(f"Ethernet Packet: {src} -> {dst}; Type: {t}")
 
-    if isinstance(data,dict):
-        add_sum_layer(data,pkt[Ether].src,'Ether')
-        add_sum_dst_mac(data,pkt[Ether].src,pkt[Ether].dst)
-        add_sum_ether_type(data,pkt[Ether].src,pkt[Ether].type)
+    data.add_sum_layer(src,'Ether')
+    data.add_sum_dst_mac(src,dst)
+    data.add_sum_ethertype(src,tp)
 
+    if pkt.haslayer(Dot1Q): # If VLAN tag is present
+        handle_Dot1Q(pkt,data,log)
+    
     if pkt.haslayer(IP):
         handle_IPv4(pkt,data,log)
     elif pkt.haslayer(ARP):
         handle_ARP(pkt,data,log)
     elif pkt.haslayer(IPv6):
         handle_IPv6(pkt,data,log)
-    elif pkt.haslayer(Dot1Q): # VLAN
-        handle_Dot1Q(pkt,data,log)
-        return
+    
+    return
 
-def handle_Dot3(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
+def handle_Dot3(pkt,data:PacketLogger,log:Optional[bool]=None) -> None:
     """
+    Handle Dot3 packets.
+    :param pkt: Sniffed packet
+    :param data: PacketLogger object to log packets
+    :param log: Boolean to indicate whether to log packets in shell or not
+    :return: None
+    :note: This function is called by passive_handle()
     """
     # TODO: logging & next layer detection
     if isinstance(log,bool) and log == True:
@@ -87,51 +111,79 @@ def handle_Dot3(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
         len = pkt[Dot3].len
         print(f"Dot3 Packet: {src} -> {dst}; Length: {len}")
 
-    if isinstance(data,dict):
-        add_sum_layer(data,pkt[Dot3].src,'Dot3')
+    
+    data.add_sum_layer(pkt[Dot3].src,'Dot3')
 
-    if pkt.haslayer(LLC):
-        hanlde_LLC(pkt,data,log)
+    # if pkt.haslayer(LLC):
+    #     hanlde_LLC(pkt,data,log)
+    return
 
-def handle_Dot1Q(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
+def handle_Dot1Q(pkt,data:PacketLogger,log:Optional[bool]=None) -> None:
     """
+    Handle Dot1Q (VLAN) packets.
+    :param pkt: Sniffed packet
+    :param data: PacketLogger object to log packets
+    :param log: Boolean to indicate whether to log packets in shell or not
+    :return: None
+    :note: This function is called by handle_Ether()
     """
-    # TODO: logging & Protocol switch case
     if isinstance(log,bool) and log == True:
         prio = pkt[Dot1Q].prio
         dei = pkt[Dot1Q].dei
         vlan = pkt[Dot1Q].vlan
         t = ETHER_TYPES[pkt[Dot1Q].type] if pkt[Dot1Q].type in ETHER_TYPES else f"0x{pkt[Dot1Q].type:x}"
         print(f"VLAN Packet: {pkt[Ether].src} -> {pkt[Ether].dst}; VID: {vlan}; Prio: {prio}; DEI: {dei}; type: {t}")
+    
+    data.add_sum_layer(pkt[Ether].src,'VLAN')
+    data.add_sum_dst_mac(pkt[Ether].src,pkt[Ether].dst)
+    data.add_sum_vlan_id(pkt[Ether].src,pkt[Dot1Q].vlan)
+    # No need to detect next layer, as it is already done
+    # in the handle_Ether function afer the VLAN tag
+    return
 
 ###############################################################
 # x. Layer 2.5
 ###############################################################
-def handle_ARP(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
+def handle_ARP(pkt,data:PacketLogger,log:Optional[bool]=None) -> None:
     """
+    Handle ARP packets.
+    :param pkt: Sniffed packet
+    :param data: PacketLogger object to log packets
+    :param log: Boolean to indicate whether to log packets in shell or not
+    :return: None
+    :note: This function is called by handle_Ether()
     """
+    src_mac = pkt[ARP].hwsrc
+    dst_mac = pkt[ARP].hwdst
+    src_ip = pkt[ARP].psrc
+    dst_ip = pkt[ARP].pdst
+    hwtype = pkt[ARP].hwtype
+    op = pkt[ARP].op
     if isinstance(log,bool) and log == True:
-        hwtype = HARDWARE_TYPES[pkt[ARP].hwtype] if pkt[ARP].hwtype in HARDWARE_TYPES else f"0x{pkt[ARP].hwtype:x}"
+        hwt = HARDWARE_TYPES[hwtype] if hwtype in HARDWARE_TYPES else f"0x{hwtype:x}"
         ptype = ETHER_TYPES[pkt[ARP].ptype] if pkt[ARP].ptype in ETHER_TYPES else f"0x{pkt[ARP].ptype:x}"
-        op = ARP_OPERATIONS[pkt[ARP].op] if pkt[ARP].op in ARP_OPERATIONS else f"0x{pkt[ARP].op:x}"
-        print(f"ARP Packet: {pkt[ARP].psrc} -> {pkt[ARP].pdst}; HW Type: {hwtype}; P Type: {ptype} Operation: {op}; srcMAC: {pkt[ARP].hwsrc}; dstMAC: {pkt[ARP].hwdst}; srcIP: {pkt[ARP].psrc}; dstIP: {pkt[ARP].pdst}")
+        o = ARP_OPERATIONS[op] if op in ARP_OPERATIONS else f"0x{op:x}"
+        print(f"ARP Packet: {src_ip} -> {dst_ip}; HW Type: {hwt}; P Type: {ptype} Operation: {o}; srcMAC: {src_mac}; dstMAC: {dst_mac}")
 
-    if isinstance(data,dict):
-        add_sum_layer(data, pkt[Ether].src,'ARP')
-        add_arp(data,pkt[ARP].hwtype,pkt[ARP].ptype,pkt[ARP].op,pkt[ARP].hwsrc,pkt[ARP].psrc,pkt[ARP].hwdst,pkt[ARP].pdst, raw(pkt).hex())
-
-def handle_DHCP(pkt,data:Optional[dict]=None, log:Optional[bool]=None):
-    """
-    """
-    # TODO: all
+    data.add_sum_layer(pkt[Ether].src,'ARP')
+    data.add_arp(src_mac,src_ip,dst_mac,dst_ip, hwtype, op, raw(pkt).hex())
+    return
 
 ###############################################################
 # x. Layer 3 (IPv4/6, ICMP, ...)
 ###############################################################
-def handle_IPv4(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
+def handle_IPv4(pkt,data:PacketLogger,log:Optional[bool]=None) -> None:
     """
     Handle the sniffed IPv4 packets.
+    :param pkt: Sniffed packet
+    :param data: PacketLogger object to log packets
+    :param log: Boolean to indicate whether to log packets in shell or not
+    :return: None
+    :note: This function is called by handle_Ether()
     """
+    src = pkt[IP].src
+    dst = pkt[IP].dst
+    prtcl = pkt[IP].proto
     if isinstance(log,bool) and log == True:
         version = pkt[IP].version
         ihl = pkt[IP].ihl
@@ -141,69 +193,76 @@ def handle_IPv4(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
         flags = pkt[IP].flags
         frag = pkt[IP].frag
         ttl = pkt[IP].ttl
-        proto = IP_PROTOCOLS[pkt[IP].proto] if pkt[IP].proto in IP_PROTOCOLS else pkt[IP].proto
+        proto = IP_PROTOCOLS[prtcl] if prtcl in IP_PROTOCOLS else prtcl
         chksum = f"0x{pkt[IP].chksum:x}"
-        src = pkt[IP].src
-        dst = pkt[IP].dst
         options = pkt[IP].options
-        # print(f"IPv4 Packet: {src} -> {dst}; Version: {version}; IHL: {ihl}; TOS: {tos}; Length: {length}; ID: {id}; Flags: {flags}; Frag: {frag}; TTL: {ttl}; Proto: {proto}; Chksum: {chksum}; Options: {options}; Raw: {raw(pkt[IP]).hex()}")
         print(f"IPv4 Packet: {src} -> {dst}; Version: {version}; IHL: {ihl}; TOS: {tos}; Length: {length}; ID: {id}; Flags: {flags}; Frag: {frag}; TTL: {ttl}; Proto: {proto}; Chksum: {chksum}; Options: {options}")
     
-    if isinstance(data,dict):
-        add_sum_layer(data,pkt[Ether].src,"IPv4")
-        add_sum_src_ip(data,pkt[Ether].src, pkt[IP].src)
-        add_sum_dst_ip(data,pkt[Ether].src, pkt[IP].dst)
-        add_sum_prtcl(data,pkt[Ether].src,pkt[IP].proto)
+    
+    data.add_sum_layer(pkt[Ether].src,"IPv4")
+    data.add_sum_src_ip(pkt[Ether].src, src)
+    data.add_sum_dst_ip(pkt[Ether].src, dst)
+    data.add_sum_protocol(pkt[Ether].src,prtcl)
 
-
-    if pkt[IP].proto == IP_PROTOCOLS["icmp"]:
+    if prtcl == IP_PROTOCOLS["icmp"]:
         handle_ICMP(pkt,data,log)
-        return
-    elif pkt[IP].proto == IP_PROTOCOLS["igmp"]:
-        return
-    elif pkt[IP].proto == IP_PROTOCOLS["tcp"]:
+    elif prtcl == IP_PROTOCOLS["tcp"]:
         handle_TCP(pkt,data,log)
-    elif pkt[IP].proto == IP_PROTOCOLS["udp"]:
+    elif prtcl == IP_PROTOCOLS["udp"]:
         handle_UDP(pkt,data,log)
-    else:
-        # Handle other protocols
-        if isinstance(log,bool) and log == True:
-            print(f"Unknown Protocol: {proto}")
-        add_ip_prtcl_unknown(data,pkt[Ether].src,pkt[Ether].dst,pkt[IP].dst,pkt[IP].proto,raw(pkt).hex())
+    
+    return
 
-def handle_IPv6(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
+def handle_IPv6(pkt,data:PacketLogger,log:Optional[bool]=None) -> None:
     """
+    Handle the sniffed IPv6 packets.
+    :param pkt: Sniffed packet
+    :param data: PacketLogger object to log packets
+    :param log: Boolean to indicate whether to log packets in shell or not
+    :return: None
+    :note: This function is called by handle_Ether()
     """
+    src = pkt[IPv6].src
+    dst = pkt[IPv6].dst
+    nh = pkt[IPv6].nh
     if isinstance(log, bool) and log == True:
         version = pkt[IPv6].version
         tc = pkt[IPv6].tc
         fl = pkt[IPv6].fl
         plen = pkt[IPv6].plen
-        nh = IPV6NH[pkt[IPv6].nh] if pkt[IPv6].nh in IPV6NH else pkt[IPv6].nh
+        nh = IPV6NH[nh] if nh in IPV6NH else nh
         hlim = pkt[IPv6].hlim
-        src = pkt[IPv6].src
-        dst = pkt[IPv6].dst
+        
+        load = pkt[IPv6].payload
+        print(f"IPv6 Packet: {src} -> {dst}; Version: {version}; TC: {tc}; FL: {fl}; PLen: {plen}; NH: {nh}; Hlim: {hlim}; Load: {load}")
 
-        print(f"IPv6 Packet: {src} -> {dst}; Version: {version}; TC: {tc}; FL: {fl}; PLen: {plen}; NH: {nh}; Hlim: {hlim}; Load: {pkt[IPv6].payload}")
+    data.add_sum_layer(pkt[Ether].src,'IPv6')
+    data.add_sum_src_ip(pkt[Ether].src,src)
+    data.add_sum_dst_ip(pkt[Ether].src,dst)
+    data.add_sum_protocol(pkt[Ether].src,nh)
 
-    if isinstance(data,dict):
-        add_sum_layer(data,pkt[Ether].src,'IPv6')
-        add_sum_src_ip(data,pkt[Ether].src,pkt[IPv6].src)
-        add_sum_dst_ip(data,pkt[Ether].src,pkt[IPv6].dst)
-        add_sum_prtcl(data,pkt[Ether].src,pkt[IPv6].nh)
-    if pkt[IPv6].nh == IPV6NH['ICMPv6']:
+    if nh == IPV6NH['ICMPv6']:
         handle_ICMPv6(pkt,data,log)
-    elif pkt[IPv6].nh == IPV6NH['TCP']:
+    elif nh == IPV6NH['TCP']:
         handle_TCP(pkt,data,log)
-    elif pkt[IPv6].nh == IPV6NH['UDP']:
+    elif nh == IPV6NH['UDP']:
         handle_UDP(pkt,data,log)
+    return
 
-def handle_ICMP(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
+def handle_ICMP(pkt,data:PacketLogger,log:Optional[bool]=None) -> None:
     """
+    Handle the sniffed ICMP packets.
+    :param pkt: Sniffed packet
+    :param data: PacketLogger object to log packets
+    :param log: Boolean to indicate whether to log packets in shell or not
+    :return: None
+    :note: This function is called by handle_IPv4()
     """
+    src = pkt[IP].src
+    dst = pkt[IP].dst
+    t = pkt[ICMP].type
+    code = pkt[ICMP].code
     if isinstance(log,bool) and log == True:
-        t = pkt[ICMP].type
-        code = pkt[ICMP].code
         chksum = pkt[ICMP].chksum
         id = pkt[ICMP].id
         seq = pkt[ICMP].seq
@@ -213,51 +272,173 @@ def handle_ICMP(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
         gw = pkt[ICMP].gw
         ptr = pkt[ICMP].ptr
         res = pkt[ICMP].reserved
-        len = pkt[ICMP].length
         addr_mask = pkt[ICMP].addr_mask
         nexthopmtu = pkt[ICMP].nexthopmtu
         extpad = pkt[ICMP].extpad
         ext = pkt[ICMP].ext
-        print(f"ICMP Packet: {pkt[IP].src} -> {pkt[IP].dst}; Type: {t}; Code: {code}; chksum: 0x{chksum:x}; Id: {id}; Seq: {seq}; ts_ori: {ts_ori}; ts_rx:{ts_rx}; ts_tx:{ts_tx}; GW: {gw}; ptr: {ptr}; res: {res}; Addr. Mask: {addr_mask}; nexthopmtu: {nexthopmtu}; extpad: {extpad}; ext: {ext}")
+        print(f"ICMP Packet: {src} -> {dst}; Type: {t}; Code: {code}; chksum: 0x{chksum:x}; Id: {id}; Seq: {seq}; ts_ori: {ts_ori}; ts_rx:{ts_rx}; ts_tx:{ts_tx}; GW: {gw}; ptr: {ptr}; res: {res}; Addr. Mask: {addr_mask}; nexthopmtu: {nexthopmtu}; extpad: {extpad}; ext: {ext}")
     
-    if isinstance(data,dict):
-        add_sum_layer(data,pkt[Ether].src,"ICMP")
-        add_icmp(data, pkt[Ether].src, pkt[Ether].dst, pkt[IP].dst, pkt[ICMP].type, pkt[ICMP].code, raw(pkt).hex())
+    data.add_sum_layer(pkt[Ether].src,"ICMP")
+    data.add_icmp( pkt[Ether].src, pkt[Ether].dst, dst, t, code, raw(pkt).hex())
+    return
 
-def handle_ICMPv6(pkt, data:Optional[dict]=None, log:Optional[bool]=None):
+def handle_ICMPv6(pkt, data:PacketLogger, log:Optional[bool]=None) -> None:
     """
+    Handle the sniffed ICMPv6 packets.
+    :param pkt: Sniffed packet
+    :param data: PacketLogger object to log packets
+    :param log: Boolean to indicate whether to log packets in shell or not
+    :return: None
+    :note: This function is called by handle_IPv6()
     """
+    src = pkt[IPv6].src
+    dst = pkt[IPv6].dst
     if isinstance(log,bool) and log == True:
-        icmp_layer = bytes(pkt[IPv6].payload)
-        src = pkt[IPv6].src
-        dst = pkt[IPv6].dst
+        icmp_layer = bytes(pkt[IPv6].payload)    
         t = icmp_layer[0]
         code = icmp_layer[1]
         print(f"ICMPv6 Packet: {src} -> {dst}; Type: {t}; Code: {code}")
 
+    if pkt.haslayer(inet6.ICMPv6ND_NA):
+        handle_ICMPv6_NA(pkt,data,log)
+    elif pkt.haslayer(inet6.ICMPv6ND_NS):
+        handle_ICMPv6_NS(pkt,data,log)
+    elif pkt.haslayer(inet6.ICMPv6ND_RS):
+        handle_ICMPv6_RS(pkt,data,log)
+    elif pkt.haslayer(inet6.ICMPv6ND_RA):
+        handle_ICMPv6_RA(pkt,data,log)
     
-    if isinstance(data,dict):
-        icmp_layer = bytes(pkt[IPv6].payload)
-        add_sum_layer(data,pkt[Ether].src,"ICMPv6")
-        add_sum_src_ip(data,pkt[Ether].src,pkt[IPv6].src)
-        add_sum_dst_ip(data,pkt[Ether].src,pkt[IPv6].dst)
-        add_icmp(data, pkt[Ether].src, pkt[Ether].dst, pkt[IPv6].dst, icmp_layer[0], icmp_layer[1], raw(pkt).hex())
+    icmp_layer = bytes(pkt[IPv6].payload)
+    data.add_sum_layer(pkt[Ether].src,"ICMPv6")
+    data.add_sum_src_ip(pkt[Ether].src,src)
+    data.add_sum_dst_ip(pkt[Ether].src,dst)
+    data.add_icmp(pkt[Ether].src, pkt[Ether].dst, dst, icmp_layer[0], icmp_layer[1], raw(pkt).hex())
+    return
 
-def handle_IGMP(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
+def handle_ICMPv6_NA(pkt,data:PacketLogger,log:Optional[bool]=None) -> None:
     """
+    Handle the sniffed ICMPv6 Neighbor Advertisement packets.
+    :param pkt: Sniffed packet
+    :param data: PacketLogger object to log packets
+    :param log: Boolean to indicate whether to log packets in shell or not
+    :return: None
+    :note: This function is called by handle_ICMPv6()
     """
-    # TODO: all
+    lladdr = pkt[inet6.ICMPv6NDOptDstLLAddr].lladdr if pkt.haslayer(inet6.ICMPv6NDOptDstLLAddr) else None
+    src = pkt[IPv6].src
+    dst = pkt[IPv6].dst
+    if isinstance(log,bool) and log == True:
+        icmp_layer = bytes(pkt[IPv6].payload)
+        t = icmp_layer[0]
+        code = icmp_layer[1]
+        if lladdr != None:
+            print(f"ICMPv6 NA Packet: {src} -> {dst}; Type: {t}; Code: {code}; LLADDR: {lladdr}")
+        else:
+            print(f"ICMPv6 NA Packet: {src} -> {dst}; Type: {t}; Code: {code}")
+
+    data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['NA'],raw(pkt).hex(),lladdr)
+    return
+
+def handle_ICMPv6_NS(pkt,data:PacketLogger,log:Optional[bool]=None) -> None:
+    """
+    Handle the sniffed ICMPv6 Neighbor Solicitation packets.
+    :param pkt: Sniffed packet
+    :param data: PacketLogger object to log packets
+    :param log: Boolean to indicate whether to log packets in shell or not
+    :return: None
+    :note: This function is called by handle_ICMPv6()
+    """
+    lladdr = pkt[inet6.ICMPv6NDOptSrcLLAddr].lladdr if pkt.haslayer(inet6.ICMPv6NDOptSrcLLAddr) else None
+    src = pkt[IPv6].src
+    dst = pkt[IPv6].dst
+    if isinstance(log,bool) and log == True:
+        icmp_layer = bytes(pkt[IPv6].payload)
+        t = icmp_layer[0]
+        code = icmp_layer[1]
+        if lladdr != None:
+            print(f"ICMPv6 NS Packet: {src} -> {dst}; Type: {t}; Code: {code}; LLADDR: {lladdr}")
+        elif pkt.haslayer(inet6.ICMPv6NDOptUnknown):
+            data = pkt[inet6.ICMPv6NDOptUnknown].data
+            print(f"ICMPv6 NS Packet: {src} -> {dst}; Type: {t}; Code: {code}; Data: {data}")
+        else:
+            print(f"ICMPv6 NS Packet: {src} -> {dst}; Type: {t}; Code: {code}")
+
+    data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['NS'],raw(pkt).hex(),lladdr)
+    return
+
+def handle_ICMPv6_RS(pkt,data:PacketLogger,log:Optional[bool]=None) -> None:
+    """
+    Handle the sniffed ICMPv6 Router Solicitation packets.
+    :param pkt: Sniffed packet
+    :param data: PacketLogger object to log packets
+    :param log: Boolean to indicate whether to log packets in shell or not
+    :return: None
+    :note: This function is called by handle_ICMPv6()
+    """
+    lladdr = pkt[inet6.ICMPv6NDOptSrcLLAddr].lladdr if pkt.haslayer(inet6.ICMPv6NDOptSrcLLAddr) else None
+    src = pkt[IPv6].src
+    dst = pkt[IPv6].dst
+    if isinstance(log,bool) and log == True:
+        icmp_layer = bytes(pkt[IPv6].payload)
+        t = icmp_layer[0]
+        code = icmp_layer[1]
+        if lladdr != None:
+            print(f"ICMPv6 RS Packet: {src} -> {dst}; Type: {t}; Code: {code}; LLADDR: {lladdr}")
+        else:
+            print(f"ICMPv6 RS Packet: {src} -> {dst}; Type: {t}; Code: {code}")
+
+    data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['RS'],raw(pkt).hex(),lladdr)
+    return
+
+def handle_ICMPv6_RA(pkt,data:PacketLogger,log:Optional[bool]=None) -> None:
+    """
+    Handle the sniffed ICMPv6 Router Advertisement packets.
+    :param pkt: Sniffed packet
+    :param data: PacketLogger object to log packets
+    :param log: Boolean to indicate whether to log packets in shell or not
+    :return: None
+    :note: This function is called by handle_ICMPv6()
+    """
+    lladdr = pkt[inet6.ICMPv6NDOptDstLLAddr].lladdr if pkt.haslayer(inet6.ICMPv6NDOptDstLLAddr) else None
+    src = pkt[IPv6].src
+    dst = pkt[IPv6].dst
+    if isinstance(log,bool) and log == True:
+        icmp_layer = bytes(pkt[IPv6].payload)
+        t = icmp_layer[0]
+        code = icmp_layer[1]
+        if lladdr != None:
+            print(f"ICMPv6 RA Packet: {src} -> {dst}; Type: {t}; Code: {code}; LLADDR: {lladdr}")
+        else:
+            print(f"ICMPv6 RA Packet: {src} -> {dst}; Type: {t}; Code: {code}")
+   
+    data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['RA'],raw(pkt).hex(),lladdr)
     return
 
 ###############################################################
 # x. Layer 4 (TCP & UDP)
 ###############################################################
-def handle_TCP(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
+def handle_TCP(pkt,data:PacketLogger,log:Optional[bool]=None) -> None:
     """
+    Handle the sniffed TCP packets.
+    :param pkt: Sniffed packet
+    :param data: PacketLogger object to log packets
+    :param log: Boolean to indicate whether to log packets in shell or not
+    :return: None
+    :note: This function is called by handle_IPv4() and handle_IPv6()
     """
+    if isinstance(pkt[TCP].underlayer,inet6.IPv6):
+        src_ip = pkt[IPv6].src
+        dst_ip = pkt[IPv6].dst
+        proto = pkt[IPv6].nh
+    else:
+        src_ip = pkt[IP].src
+        dst_ip = pkt[IP].dst
+        proto = pkt[IP].proto
+
+    dst_port = pkt[TCP].dport
+    src_port = pkt[TCP].sport
+
     if isinstance(log,bool) and log == True:
-        src_port = pkt[TCP].sport
-        dst_port = pkt[TCP].dport
         seq = pkt[TCP].seq
         ack = pkt[TCP].ack
         flags = pkt[TCP].flags
@@ -265,47 +446,51 @@ def handle_TCP(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
         chksum = f"0x{pkt[TCP].chksum:x}"
         urgptr = pkt[TCP].urgptr
         options = pkt[TCP].options
-        if isinstance(pkt[TCP].underlayer,inet.IP):
-            print(f"TCP Packet: {pkt[IP].src}:{src_port} -> {pkt[IP].dst}:{dst_port}; Seq: {seq}; Ack: {ack}; Flags: {flags}; Window: {window}; Chksum: {chksum}; Urgptr: {urgptr}; Options: {options}; Load: {pkt[TCP].payload}")
-        elif isinstance(pkt[TCP].underlayer,inet6.IPv6):
-            print(f"TCP Packet: {pkt[IPv6].src}:{src_port} -> {pkt[IPv6].dst}:{dst_port}; Seq: {seq}; Ack: {ack}; Flags: {flags}; Window: {window}; Chksum: {chksum}; Urgptr: {urgptr}; Options: {options}; Load: {pkt[TCP].payload}")
+        load = pkt[TCP].payload
+        print(f"TCP Packet: {src_ip}:{src_port} -> {dst_ip}:{dst_port}; Seq: {seq}; Ack: {ack}; Flags: {flags}; Window: {window}; Chksum: {chksum}; Urgptr: {urgptr}; Options: {options}; Load: {load}")
+    try:
+        # data.add_sum_layer(pkt[Ether].src,'TCP')
+        # data.add_sum_src_port(pkt[Ether].src,src_port)
+        # data.add_sum_dst_port(pkt[Ether].src,dst_port)
+        data.add_raw_data(pkt[Ether].src,pkt[Ether].dst,dst_ip,proto,dst_port,raw(pkt).hex())
+    except Exception as e:
+        print(f"[*] Error while handling TCP packet: {e}")
+        if data != None:
+            data.save_to_json()
+        else:
+            print("[*] No data to save.")
+        exit(1)
+    return
 
-    if not isinstance(data,dict):
-        return
-    
-    add_sum_layer(data,pkt[Ether].src,'TCP')
-    add_sum_src_port(data,pkt[Ether].src,pkt[TCP].sport)
-    add_sum_dst_port(data,pkt[Ether].src,pkt[TCP].dport)
-    # add_raw_data(data,pkt[Ether].src,pkt[Ether].dst,pkt[IP].dst,pkt[IP].proto,pkt[TCP].dport,raw(pkt).hex())
-    if isinstance(pkt[TCP].underlayer,inet.IP):
-        add_raw_data(data,pkt[Ether].src,pkt[Ether].dst,pkt[IP].dst,pkt[IP].proto,pkt[TCP].dport,raw(pkt).hex())
-    if isinstance(pkt[TCP].underlayer,inet6.IPv6):
-        add_raw_data(data,pkt[Ether].src,pkt[Ether].dst,pkt[IPv6].dst,pkt[IPv6].nh,pkt[TCP].dport,raw(pkt).hex())
+def handle_UDP(pkt,data:PacketLogger,log:Optional[bool]=None) -> None:
+    """
+    Handle the sniffed UDP packets.
+    :param pkt: Sniffed packet
+    :param data: PacketLogger object to log packets
+    :param log: Boolean to indicate whether to log packets in shell or not
+    :return: None
+    :note: This function is called by handle_IPv4() and handle_IPv6()
+    """
+    if isinstance(pkt[UDP].underlayer,inet6.IPv6):
+        src_ip = pkt[IPv6].src
+        dst_ip = pkt[IPv6].dst
+        proto = pkt[IPv6].nh
+    else:
+        src_ip = pkt[IP].src
+        dst_ip = pkt[IP].dst
+        proto = pkt[IP].proto
 
-def handle_UDP(pkt,data:Optional[dict]=None,log:Optional[bool]=None):
-    """
-    """
+    src_port = pkt[UDP].sport
+    dst_port = pkt[UDP].dport
+
     if isinstance(log,bool) and log == True:
-        src_port = pkt[UDP].sport
-        dst_port = pkt[UDP].dport
         length = pkt[UDP].len
         chksum = f"0x{pkt[UDP].chksum:x}"
         load = pkt[UDP].payload
-        if isinstance(pkt[UDP].underlayer,inet.IP):
-            print(f"UDP Packet: {pkt[IP].src}:{src_port} -> {pkt[IP].dst}:{dst_port}; Length: {length}; Chksum: {chksum}; Load: {load}")
-        elif isinstance(pkt[UDP].underlayer,inet6.IPv6):
-            print(f"UDP Packet: {pkt[IPv6].src}:{src_port} -> {pkt[IPv6].dst}:{dst_port}; Length: {length}; Chksum: {chksum}; Load: {load}")
+        print(f"UDP Packet: {src_ip}:{src_port} -> {dst_ip}:{dst_port}; Length: {length}; Chksum: {chksum}; Load: {load}")
 
-
-    if not isinstance(data,dict):
-        return
-
-    add_sum_layer(data,pkt[Ether].src,'UDP')
-    add_sum_src_port(data,pkt[Ether].src,pkt[UDP].sport)
-    add_sum_dst_port(data,pkt[Ether].src,pkt[UDP].dport)
-    # add_raw_data(data,pkt[Ether].src,pkt[Ether].dst,pkt[IP].dst,pkt[IP].proto,pkt[UDP].dport,raw(pkt).hex())
-    if isinstance(pkt[UDP].underlayer,inet.IP):
-        add_raw_data(data,pkt[Ether].src,pkt[Ether].dst,pkt[IP].dst,pkt[IP].proto,pkt[UDP].dport,raw(pkt).hex())
-    elif isinstance(pkt[UDP].underlayer,inet6.IPv6):
-        add_raw_data(data,pkt[Ether].src,pkt[Ether].dst,pkt[IPv6].dst,pkt[IPv6].nh,pkt[UDP].dport,raw(pkt).hex())
-        
+    data.add_sum_layer(pkt[Ether].src,'UDP')
+    data.add_sum_src_port(pkt[Ether].src,src_port)
+    data.add_sum_dst_port(pkt[Ether].src,dst_port)
+    data.add_raw_data(pkt[Ether].src,pkt[Ether].dst,dst_ip,proto,dst_port,raw(pkt).hex())
+    return
