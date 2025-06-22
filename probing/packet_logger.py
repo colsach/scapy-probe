@@ -2,6 +2,7 @@
 import json
 import ipaddress
 import threading
+from multiprocessing.managers import BaseManager
 from typing import Optional, Tuple, Union
 from .definitions import *
 from scapy.all import *
@@ -792,7 +793,8 @@ class PacketLogger:
                 self.__data[self.__dtype][src_mac]['summary']['arp_scan'][mac] = {ip:raw}
 
         # print(self.__data)
-
+class SharedPacketLogger(BaseManager): pass
+SharedPacketLogger.register('PacketLogger',PacketLogger)
 
 class CustomIfaces:
     def __init__(self,conf,blacklist:Union[str,list[str]]=None):
@@ -1154,28 +1156,36 @@ class CustomIface:
     Custom Interface class containing all interfaces, IPv4/6s with corresponding newtork, gateway and mask.
     This class is used to handle the interfaces in a more flexible way, allowing to add and remove interfaces dynamically.
     """
-    def __init__(self, name:str, mac:str=None, ip4:list[Tuple[str,str,str,int]]=None, ip6:list[Tuple[str,str,str,int]]=None):
+    def __init__(self, name:str, mac:str=None, ip4:list[Tuple[str,str,str,str]]=None, ip6:list[Tuple[str,str,str,str]]=None,max_workers:int=None):
         """
         Custom Interface class containing all interfaces, IPv4/6s with corresponding newtork, gateway and mask.
         :param name: Name of the interface
         :param mac: MAC address of the interface
         :param ip4: List of IPv4 addresses, gateways, networks and masks
         :param ip6: List of IPv6 addresses, gateways, networks and masks
+        :param max_workers: Maximum number of workers for the interface, if None, it will be set to the default value.
         """
-        self.name = name
-        self.mac = mac
-        self.ip4 = ip4 if ip4 is not None else []
-        self.ip6 = ip6 if ip6 is not None else []
+        self.name = name                            # type: str
+        self.mac = mac                              # type: str
+        self.ip4 = ip4 if ip4 is not None else []   # type: list[Tuple[str,str,str,str]]
+        self.ip6 = ip6 if ip6 is not None else []   # type: list[Tuple[str,str,str,str]]
+        self.max_workers = max_workers if max_workers is not None else WIN_MAX_WORKERS # type: int
+    
     def __str__(self) -> str:
         output += f"{self.name} - MAC: {self.mac}\n"
+        # if self.ip4 is not None:
+        #     for ip, gw, net, msk in self.ip4:
+        #         output += f"\tIPv4: {ip}; GW: {gw}; Net: {net}; MSK: {msk}\n"
+        # if self.ip6 is not None:
+        #     for ip, gw, net, msk in self.ip4:
+        #         output += f"\tIPv6: {ip}; GW: {gw}; Net: {net}; MSK: {msk}\n"
         if self.ip4 is not None:
-            for ip, gw, net, msk in self.ip4:
-                output += f"\tIPv4: {ip}; GW: {gw}; Net: {net}; MSK: {msk}\n"
-        if self.ip6 is not None:
-            for ip, gw, net, msk in self.ip4:
-                output += f"\tIPv6: {ip}; GW: {gw}; Net: {net}; MSK: {msk}\n"
+            for ip,gw,net,msk in self.ip4:
+                output += f"\tIPv4: {ip}, GW: {gw}, NET: {net}, MSK: {msk}\n"
+            for ip in self.ip6:
+                output += f"\tIPv6: {ip}\n"
         return output
-    def add_ipv4(self, ip:str, gw:str, net:str, msk:int) -> None:
+    def add_ipv4(self, ip:str, gw:str, net:str, msk:str) -> None:
         """
         Add an IPv4 address to the interface.
         :param ip: IPv4 address
@@ -1185,7 +1195,7 @@ class CustomIface:
         """
         if (ip, gw, net, msk) not in self.ip4:
             self.ip4.append((ip, gw, net, msk))
-    def add_ipv6(self, ip:str, gw:str, net:str, msk:int) -> None:
+    def add_ipv6(self, ip:str, gw:str, net:str, msk:str) -> None:
         """
         Add an IPv6 address to the interface.
         :param ip: IPv6 address
@@ -1195,29 +1205,46 @@ class CustomIface:
         """
         if (ip, gw, net, msk) not in self.ip6:
             self.ip6.append((ip, gw, net, msk))
-    def get_ipv4(self) -> list[Tuple[str,str,str,int]]:
-        """
-        Get the IPv4 addresses of the interface.
-        :return: List of IPv4 addresses, gateways, networks and masks
-        """
-        return self.ip4
-    def get_ipv6(self) -> list[Tuple[str,str,str,int]]:
-        """
-        Get the IPv6 addresses of the interface.
-        :return: List of IPv6 addresses, gateways, networks and masks
-        """
-        return self.ip6
-    def get_ips(self) -> list[str]:
+    # def get_ipv4(self) -> list[Tuple[str,str,str,int]]:
+    #     """
+    #     Get the IPv4 addresses of the interface.
+    #     :return: List of IPv4 addresses, gateways, networks and masks
+    #     """
+    #     return self.ip4
+    # def get_ipv6(self) -> list[Tuple[str,str,str,int]]:
+    #     """
+    #     Get the IPv6 addresses of the interface.
+    #     :return: List of IPv6 addresses, gateways, networks and masks
+    #     """
+    #     return self.ip6
+    def get_ips(self) -> list[Tuple[str,str,str,str]]:
         """
         Get all IP addresses of the interface, both IPv4 and IPv6.
         :return: List of IP addresses
         """
         ips = []
-        for ip, _, _, _ in self.ip4:
-            ips.append(ip)
-        for ip, _, _, _ in self.ip6:
-            ips.append(ip)
+        # for ip, _, _, _ in self.ip4:
+        #     ips.append(ip)
+        # for ip, _, _, _ in self.ip6:
+        #     ips.append(ip)
+        ips.extend(self.ip4)
+        ips.extend(self.ip6)
         return ips
+    
+    def get_ips_4(self) -> list[Tuple[str,str,str,str]]:
+        """
+        Get all IPv4 addresses of the interface.
+        :return: List of IPv4 addresses
+        """
+        return self.ip4
+    
+    def get_ips_6(self) -> list[Tuple[str,str,str,str]]:
+        """
+        Get all IPv6 addresses of the interface.
+        :return: List of IPv6 addresses
+        """
+        return self.ip6
+
     def ip_in_net(self,ip:str) -> bool:
         """
         Check if the given IP address is in the network of the interface.
@@ -1235,6 +1262,20 @@ class CustomIface:
             if ipaddress.ip_address(ip) in ipaddress.ip_interface(f"{ip6}/{msk6}").network:
                 return True
         return False
+    def get_net_ip_by_ip(self,ip:str) -> str:
+        """"""
+        for ip4, _,_,msk4 in self.ip4:
+            if ip == ip4:
+                return ''
+            if ipaddress.ip_address(ip) in ipaddress.ip_interface(f"{ip4}/{msk4}").network:
+                return ip4
+        for ip6, _,_,msk6 in self.ip4:
+            if ip == ip6:
+                return ''
+            if ipaddress.ip_address(ip) in ipaddress.ip_interface(f"{ip6}/{msk6}").network:
+                return ip6
+        return ''
+
     def delt_ip(self,ip:str) -> None:
         """
         Delete the given IP address from the interface.
@@ -1274,3 +1315,179 @@ class CustomIface:
         except Exception as e:
             print(f"CustomIface: Problem adding route for interface {self.name}.\nError: {e}")
         return
+
+    def check_id(self,id:str) -> bool:
+        """
+        Check if the interface ID matches the given ID.
+        :param id: ID to check
+        :return: True if the ID matches, False otherwise
+        """
+        return self.name == id or self.mac == id or id in self.ip4 or id in self.ip6
+    
+
+class CustomIfacesManager:
+    """
+    Custom Ifaces Manager class to handle multiple interfaces.
+    This class is used to handle the interfaces in a more flexible way, allowing to add and remove interfaces dynamically.
+    """
+    def __init__(self,conf:scapy.config.conf,whitelist:Union[str,list[str]]=None,blacklist:Union[str,list[str]]=None):
+        """
+        Custom Ifaces Manager class to handle multiple interfaces.
+        :param conf: Scapy conf object
+        :param whitelist: Either a string or a list of strings, containing the interfaces or ips to include in the probing. Complete interface name or with '*' for a group can be included. If None, all interfaces are included.
+        :param blacklist: Either a string or a list of strings, containing the interfaces or ips not to include in the probing. Complete interface name or with '*' for a group can be included. If None, the default is: 'lo', 'docker*', 'vibr*' and 'br-*'.
+        """
+        self.conf = conf
+        self.__routes = None        # type: scapy.config.Route
+        self.__ifaces = None        # type: dict[str,CustomIface]
+        self.__whitelist = None     # type: dict[list[str],list[str]]
+        self.__blacklist = None     # type: dict[list[str],list[str]]
+        self.max_workers = None     # type: int
+
+        if whitelist is None and blacklist is None:
+            self.__blacklist = {'name':['lo'],'regex':['docker','virbr','br-']}
+            self.__whitelist = None
+        elif whitelist is None and blacklist is not None:
+            self.__blacklist = self.__init_watchlist(blacklist)
+            self.__whitelist = None
+        elif whitelist is not None:
+            self.__whitelist = self.__init_watchlist(whitelist)
+            self.__blacklist = None
+
+        self.__init_max_workers()
+        self.__init_ifaces()
+        
+    def __str__(self):
+
+        return ""
+    
+    def __init_watchlist(self,watchlist:Union[str,list[str]]) -> dict[str,list[str]]:
+        """
+        Initialize the watchlist.
+        :param final_list: Dictionary to store the final watchlist (either self.__whitelist or self.__blacklist).
+        :param watchlist: Either a string or a list of strings, containing the interfaces or ips to include or exclude in the probing. Complete interface name or with '*' for a group can be included.
+        """
+        final_list = {'name':[],'regex':[]}
+        if watchlist is not None:
+            if isinstance(watchlist,str) and '*' in watchlist:
+                final_list['regex'].append(watchlist.split('*',1)[0])
+            elif isinstance(watchlist,str) and '*' not in watchlist:
+                final_list['name'].append(watchlist)
+            elif isinstance(watchlist,list):
+                for item in watchlist:
+                    if '*' in item:
+                        final_list['regex'].append(item.split('*',1)[0])
+                    else:
+                        final_list['name'].append(item)
+        return final_list
+    
+    def __init_ifaces(self) -> None:
+        """
+        Initialize the interfaces.
+        This method fetches the interfaces from the Scapy conf and creates a CustomIface object for each interface.
+        """
+        self.__ifaces = {}
+        if self.__whitelist is not None:
+            for iface in self.conf.ifaces.values():
+                if self.__check_watchlist(iface.name, self.__whitelist):    
+                    mac = iface.mac
+                    ipv4s = self.__init_ipv4((iface.name, iface.ips[4]))
+                    ipv6s = self.__init_ipv6((iface.name, iface.ips[6]))
+                    self.__ifaces[iface.name] = CustomIface(name=iface.name, mac=mac, ip4=ipv4s, ip6=ipv6s, max_workers=self.max_workers)
+        elif self.__blacklist is not None:
+            for iface in self.conf.ifaces.values():
+                if not self.__check_watchlist(iface.name, self.__blacklist):
+                    mac = iface.mac
+                    ipv4s = self.__init_ipv4((iface.name, iface.ips[4]))
+                    ipv6s = self.__init_ipv6((iface.name, iface.ips[6]))
+                    self.__ifaces[iface.name] = CustomIface(name=iface.name, mac=mac, ip4=ipv4s, ip6=ipv6s, max_workers=self.max_workers)
+        return
+        
+    def __check_watchlist(self,iface:str,watchlist:dict[str,list[str]]) -> bool:
+        """
+        Check if the interface is in the watchlist.
+        :param iface: Interface name to check
+        :param watchlist: Watchlist to check against (either self.__whitelist or self.__blacklist).
+        :return: True if the interface is in the watchlist, False otherwise.
+        """
+        if iface in watchlist['name']:
+            return True
+        for regex in watchlist['regex']:
+            if regex in iface:
+                return True
+        return False
+
+    def __init_max_workers(self) -> None:
+        """
+        Initialize the maximum number of workers for the probing.
+        This method sets the maximum number of workers to 10% of the soft limit of open files, or to a predefined constant if the system does not support it.
+        """
+        try:
+            soft_limit, self.max_limit = resource.getrlimit(resource.RLIMIT_NOFILE)
+            self.max_workers = min(int(soft_limit * 0.1), MAX_WORKERS)
+        except Exception as e:
+            print(e)
+            self.max_workers = WIN_MAX_WORKERS
+
+    def __init_ipv4(self,info:tuple[str,list[str]]) -> list[tuple[str,str,str,str]]:
+        """
+        Initialize the IPv4 addresses, gateways, networks and masks.
+        :param ips: List of IPv4 addresses to initialize
+        :return: List of tuples containing the IPv4 address, gateway, network and mask
+        """
+        res = []
+        name, ips = info
+        for ip in ips:
+            _,_,gw = self.conf.route.route(ip)
+            msk4 = 0xffffffff
+            net4 = 0
+            for net, msk,gw, ifa,addr,_ in self.conf.route.routes:
+                if ifa == name and addr == ip and msk > 4026531840 and msk < msk4:       # 4026531840 = F0000000 ->
+                    net4 = net
+                    msk4 = msk
+                    continue
+            msk4 = scapy.utils.ltoa(msk4)
+            net4 = scapy.utils.ltoa(net4)
+            # print(f"CustomIfacesManager: Interface {name} - IP: {ip}, GW: {gw}, Net: {net4}, Msk: {msk4}")
+            res.append((ip, gw, net4, msk4))
+        return res
+    
+    def __init_ipv6(self,info:tuple[str,list[str]]) -> list[tuple[str,str,str,str]]:
+        """
+        Initialize the IPv6 addresses, gateways, networks and masks.
+        :param ips: List of IPv6 addresses to initialize
+        :return: List of tuples containing the IPv6 address, gateway, network and mask
+        """
+        # TODO: Implement IPv6 initialization
+        return
+    
+    def get_ifaces(self) -> list[Tuple[str,CustomIface]]:
+        """
+        Get the interfaces dictionary.
+        :return: Dictionary with interface names as keys and CustomIface objects as values.
+        """
+        res = []
+        for name in self.__ifaces:
+            res.append((name,self.__ifaces[name]))
+        return res
+    
+    def get_iface(self,id:str) -> Union[CustomIface,None]:
+        """
+        Get the interface by name, MAC or IPv4/6.
+        :param id: Interface name, mac, or IP to get
+        :return: CustomIface object if the interface exists, None otherwise.
+        """
+        for name in self.__ifaces:
+            if self.__ifaces[name].check_id(id):
+                return self.__ifaces[name]
+        return None
+    
+    def get_ifaces_names(self) -> list[str]:
+        """
+        Get the list of interface names.
+        :return: List of interface names.
+        """
+        res = []
+        for name in self.__ifaces:
+            res.append(name)
+        return res

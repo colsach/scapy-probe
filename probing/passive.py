@@ -5,7 +5,7 @@ from scapy.layers import inet, inet6
 from .definitions import *
 from .packet_logger import *
 
-def passive_probing(iface:CustomIfaces,stop_event,data:PacketLogger,log:Optional[bool]=None):
+def passive_probing(iface_manager:CustomIfacesManager,stop_event,data:PacketLogger,log:Optional[bool]=None):
     """
     Passive probing function to sniff and log packets on the specified interface.
 
@@ -14,24 +14,27 @@ def passive_probing(iface:CustomIfaces,stop_event,data:PacketLogger,log:Optional
     :param data: PacketLogger object to log packets
     :param log: Boolean to indicate whether to log packets in shell or not
     """
+    ifaces = iface_manager.get_ifaces_names()
     if data != None:
-        print(f"\n[*] Passive Probing: Sniffing and logging packets on interface {iface.print_iface_names()}...\n")
+        print(f"\n[*] Passive Probing: Sniffing and logging packets on interface {ifaces}...\n")
         # data.__context.dtype = 'passive'
     else:
-        print(f"\n[*] Passive Probing: Sniffing and displaying packets on interface {iface.print_iface_names()}...\n")
+        print(f"\n[*] Passive Probing: Sniffing and displaying packets on interface {ifaces}...\n")
     # conf.layers.filter([Ether, Dot3, Dot1Q, IP, IPv6, ARP, ICMP, inet6.ICMPv6ND_NA,inet6.ICMPv6ND_NS,inet6.ICMPv6ND_RA,inet6.ICMPv6ND_RS, TCP, UDP])
-    ifaces = iface.get_ifaces_names()
+    
     if len(ifaces) == 1:
         ifaces = ifaces[0]
+    
     print(f"[*] Sniffing on interface(s): {ifaces}")
     try:
         sniff(iface=ifaces, prn=lambda pkt: passive_handle(pkt,data,log), stop_filter=lambda pkt: stop_sniffing(pkt,stop_event))
     except Exception as e:
         print(f"[*] Error while sniffing: {e}")
-        if data != None:
-            data.save_to_json()
-        else:
-            print("[*] No data to save.")
+        # if data != None:
+        #     data.save_to_json()
+        # else:
+        #     print("[*] No data to save.")
+        
 
 def stop_sniffing(pkt,stop_event) -> bool:
     """

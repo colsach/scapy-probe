@@ -52,10 +52,20 @@ def get_ip6(iface:str) -> Union[List[str],str,None]:
 # x. Layer 2 (Ether, Dot3, ...)
 ###############################################################
 
-def active_probing(iface:CustomIfaces, scan_type:Optional[list]=None, data:Optional[PacketLogger]=None, log:Optional[bool]=None):
+def active_probing(iface_manager:CustomIfacesManager, data:PacketLogger, scan_type:Optional[list[str]]=None, ports:Optional[Tuple[int,list[int],Tuple[int,int]]]=PORTS, log:Optional[bool]=None):
     """
+    Performs active probing on the specified interfaces.
+    :param iface_manager: CustomIfacesManager object containing interface information
+    :param data: PacketLogger object to log scan results
+    :param scan_type: List of scan types to perform. If 'ALL' is included, all scan types will be performed.
+                      Options: ['ARP', 'PING', 'PORT', 'ALL']
+    :param ports: Ports to scan. Can be a single port (int), a list of ports, or a tuple with a range of ports (start, end).
+    :type ports: int | list[int] | tuple[int,int]
+    :param log: Optional boolean to enable logging of scan results
+    :return: None
     """
-    if 'ALL' in scan_type:
+
+    if 'ALL' in scan_type or scan_type == None or scan_type == []:
         scan_type.extend(['ARP','PING','PORT'])      # Add all scan types if 'ALL' is selected
 
     output = "\n[*] Active Probing: "
@@ -115,17 +125,17 @@ def active_probing(iface:CustomIfaces, scan_type:Optional[list]=None, data:Optio
 #     ciface = CustomIfaces(if_mac,if_ip4,if_gw4,if_msk4,if_net4,if_ip6,if_gw6,if_msk6,if_net6,iface)
 
     # print(output + f"packets on interface {iface}: {if_mac}; {if_ip}; {if_net}/{if_msk}...\n")
-    print(output + f"on interface: \n{iface}\n")
+    print(output + f"on interfaces: \n{iface_manager}\n")
     # handle_TCP_active(iface,data,log)
     
-    handle_IFACE_scan(iface,data,scan_type,log)
+    handle_IFACES_scan(iface_manager,data,scan_type,ports,log)
 
-    if 'ARP' in scan_type:
-        handle_ARP_scan(iface,data,log)
-    if 'PING' in scan_type:
-        handle_PING_scan(iface,data,log)
-    if 'PORT' in scan_type:
-        handle_PORT_scan(iface,PORTS,data,log)
+    # if 'ARP' in scan_type:
+    #     handle_ARP_scan(iface,data,log)
+    # if 'PING' in scan_type:
+    #     handle_PING_scan(iface,data,log)
+    # if 'PORT' in scan_type:
+    #     handle_PORT_scan(iface,PORTS,data,log)
 
 
     # TODO: Add MAC, ARP scanning
@@ -162,34 +172,77 @@ def handle_TCP_active(iface:CustomIfaces,data:Optional[PacketLogger]=None,log:Op
     # print(data)
     # data.add_arp_scan(ciface.mac,res)
 
-def handle_IFACE_scan(iface:CustomIfaces, data:PacketLogger, scan_type:Optional[list]=None, log:Optional[bool]=None):
+def handle_IFACES_scan(iface_manager:CustomIfacesManager, data:PacketLogger, scan_type:list, ports:Union[int,list,tuple[int,int]], log:bool):
+
+    with ThreadPoolExecutor(max_workers=iface_manager.max_workers) as executor:
+        futures = [executor.submit(handle_IFACE_scan,(name,iface,data,scan_type,ports,log)) for name, iface in iface_manager.get_ifaces()]
+        for future in as_completed(futures): pass
+            
 
 
+def handle_IFACE_scan(input:Tuple[str,CustomIface,PacketLogger,list[str],Union[int,list,tuple[int,int]],bool]):
+    """
+    Handles the scanning of a single interface.
+    :param input: Tuple containing:
+                  - name: Name of the interface
+                  - iface: CustomIface object with interface information
+                  - data: PacketLogger object to store scan results
+                  - scan_type: List of scan types to perform
+                  - ports: Ports to scan (int for single port, list for multiple ports, tuple for port range)
+                  - log: Optional boolean to enable logging
+    """
 
-def handle_ARP_scan(iface:CustomIfaces,data:Optional[PacketLogger]=None,log:Optional[bool]=None):
-    """"""
-    ifaces = iface.get_ifaces()
-    # print(f"Scanning ARP on interfaces: {ifaces}")
-    jobs = []
-    for name in ifaces:
-        mac = ifaces[name]['mac']
-        for ip, _, _, msk in ifaces[name]['ipv4']:
-            print(f"ARP scan on interface {name} with MAC {mac} and IP {ip}...")
-            infos = (name, mac, ip, msk)
-            jobs.append((parallel_arp_scan, mac, (infos,iface.max_workers,log)))
-            # res = parallel_arp_scan(infos,iface.max_workers,log)
-            # # print(f"ARP scan results on {name}: {res}")
-            # data.add_arp_scan(ifaces[name]['mac'],res)
-
-        # if log:
-        #     print(f"ARP scan results on {name}: {res}")
-        
-    with multiprocessing.Pool(processes=iface.max_workers) as pool:
-        results = list(tqdm(pool.imap_unordered(scan_job, jobs),total=len(jobs), desc="Running ARP scan jobs..."))
+    name, iface, data, scan_type, ports, log = input
+    if log == True:
+        print(f"\n🚀 Starting scan on interface {name}...\n")
     
-    for mac,res in results:
-        print(f"ARP scan results for MAC {mac}: {res}")
-        data.add_arp_scan(mac,res)
+    if 'ARP' in scan_type:
+        # handle_ARP_scan(iface,data,log)
+        p_arp = multiprocessing.Process(target=handle_ARP_scan, args=(iface,data,log))
+        p_arp.start()
+        p_arp.join()
+    
+    if 'PING' in scan_type:
+        # handle_PING_scan(iface,data,log)
+        p_ping = multiprocessing.Process(target=handle_PING_scan, args=(iface,data,log))
+        p_ping.start()
+        p_ping.join()
+    
+    if 'PORT' in scan_type:
+        # handle_PORT_scan(iface,ports,data,log)
+        p_port = multiprocessing.Process(target=handle_PORT_scan, args=(iface,data,ports,log))
+        p_port.start()
+        p_port.join()
+
+def handle_ARP_scan(iface:CustomIface,data:PacketLogger,log:bool):
+    """"""
+    if log == True:
+        print(f"\n🚀 Starting ARP scan on interface {iface.name}...\n")
+
+    ips = iface.get_ips_4()
+    for ip, _,_, msk in ips:
+        res = parallel_arp_scan2(iface.name,iface.mac,ip,msk,iface.max_workers,log)
+        data.add_arp_scan(iface.mac,res)
+    ## ifaces = iface.get_ifaces()
+    ## # print(f"Scanning ARP on interfaces: {ifaces}")
+    ## jobs = []
+    ## for name in ifaces:
+    ##     mac = ifaces[name]['mac']
+    ##     for ip, _, _, msk in ifaces[name]['ipv4']:
+    ##         print(f"ARP scan on interface {name} with MAC {mac} and IP {ip}...")
+    ##         infos = (name, mac, ip, msk)
+    ##         jobs.append((parallel_arp_scan, mac, (infos,iface.max_workers,log)))
+    ##         # res = parallel_arp_scan(infos,iface.max_workers,log)
+    ##         # # print(f"ARP scan results on {name}: {res}")
+    ##         # data.add_arp_scan(ifaces[name]['mac'],res)
+    ##     # if log:
+    ##     #     print(f"ARP scan results on {name}: {res}")    
+    ## with multiprocessing.Pool(processes=iface.max_workers) as pool:
+    ##     results = list(tqdm(pool.imap_unordered(scan_job, jobs),total=len(jobs), desc="Running ARP scan jobs..."))
+    ## for mac,res in results:
+    ##     print(f"ARP scan results for MAC {mac}: {res}")
+    ##     data.add_arp_scan(mac,res)
+    return
 
 # def scan_job(func, id:str, args):
 def scan_job(args):
@@ -210,41 +263,77 @@ def scan_job(args):
         print(f"Error in scan job: {e}")
         return (None,None)
 
-def handle_PING_scan(iface:CustomIfaces,data:Optional[PacketLogger]=None,log:Optional[bool]=None):
+def handle_PING_scan(iface:CustomIface,data:PacketLogger,log:bool):
     """
+    Handles the PING scan on the specified interface.
+    :param iface: CustomIface object with interface information
+    :param data: PacketLogger object to store scan results
+    :param log: Optional boolean to enable logging
+    :return: None
     """
-    ifaces = iface.get_ifaces()
-    for name in ifaces:
-        for ip, _, _, msk in ifaces[name]['ipv4']:
-            print(f"PING sacn on interface {name} with MAC {ifaces[name]['mac']} and IP {ip}...")
-            res = parallel_ping_scan2(ip,msk,iface.max_workers,log)
-            # print(f"PING scan results on {name}: {res}")
-            if res is None:
-                continue
-            data.add_ping_scan(ifaces[name]['mac'],res)
+    if log == True:
+        print(f"\n🚀 Starting PING scan on interface {iface.name}...\n")
+
+    for ip, _, _, msk in iface.get_ips_4():
+        res = parallel_ping_scan2(ip,msk, iface.max_workers,log)
+        if res is None:
+            continue
+        data.add_ping_scan(iface.mac,res)
+    ## ifaces = iface.get_ifaces()
+    ## for name in ifaces:
+    ##     for ip, _, _, msk in ifaces[name]['ipv4']:
+    ##         print(f"PING sacn on interface {name} with MAC {ifaces[name]['mac']} and IP {ip}...")
+    ##         res = parallel_ping_scan2(ip,msk,iface.max_workers,log)
+    ##         # print(f"PING scan results on {name}: {res}")
+    ##         if res is None:
+    ##             continue
+    ##         data.add_ping_scan(ifaces[name]['mac'],res)
+    return
    
-def handle_PORT_scan(iface:CustomIfaces,ports:Union[int,list,tuple[int,int]],data:Optional[PacketLogger]=None,log:Optional[bool]=None):
+# def handle_PORT_scan(iface:CustomIfaces,ports:Union[int,list,tuple[int,int]],data:Optional[PacketLogger]=None,log:Optional[bool]=None):
+def handle_PORT_scan(iface:CustomIface,data:PacketLogger,ports:Union[int,list,tuple[int,int]],log:bool):
     """
     """
-    ips = iface.check_networks_list(data.get_ips_2())
-    for name in ips:
-        iface.resync_conf()
-        iface.keep_iface(name)
-        src_mac = iface.get_mac(name)
-        if isinstance(ports,int):
-            print(f"Scanning port {ports} on interface {name} with MAC {src_mac}...")
-        elif isinstance(ports,tuple) and len(ports) == 2:
-            print(f"Scanning ports {ports[0]}-{ports[1]} on interface {name} with MAC {src_mac}...")
-        elif isinstance(ports,list) and len(ports) > 3:
-            print(f"Scanning ports [{ports[0]},...,{ports[len(ports)-1]}] on interface {name} with MAC {src_mac}...")
-        elif isinstance(ports,list):
-            print(f"Scanning ports {ports} on interface {name} with MAC {src_mac}...")
+    if isinstance(ports,int):
+        ports = [ports]
+        output = f"Scanning port {ports[0]} on interface {iface.name}"
+    elif isinstance(ports,tuple) and len(ports) == 2 and isinstance(ports[0],int) and isinstance(ports[1],int):
+        ports = list(range(ports[0], ports[1] + 1))
+        output = f"Scanning ports {ports[0]}-{ports[-1]} on interface {iface.name}"
+    elif isinstance(ports,list) and len(ports) > 3:
+        output = f"Scanning ports [{ports[0]},...,{ports[-1]}] on interface {iface.name}"
+    elif isinstance(ports,list):
+        output = f"Scanning ports {ports} on interface {iface.name}"
 
-
-        for src_ip, ip, dst_mac in ips[name]:
-            res = parallel_port_scan(src_ip,ip,ports,iface.max_workers,name,log)
-            print(f"Port scan results on {ip} with MAC {dst_mac}: {res}")
-            data.add_port_scan(src_mac,dst_mac,ip,res)
+    for ip,mac in data.get_ips_2():
+        if not iface.ip_in_net(ip):
+            continue
+        src_ip = iface.get_net_ip_by_ip(ip)
+        if src_ip == '':
+            continue
+        if log == True and output is not None:
+            print(f"{output} with IP: {ip}...")
+        res = parallel_port_scan3(src_ip,ip,ports,iface.max_workers)
+        data.add_port_scan(iface.mac,mac,ip,res)
+    ##ips = iface.check_networks_list(data.get_ips_2())
+    ##for name in ips:
+    ##    iface.resync_conf()
+    ##    iface.keep_iface(name)
+    ##    src_mac = iface.get_mac(name)
+    ##    if isinstance(ports,int):
+    ##        print(f"Scanning port {ports} on interface {name} with MAC {src_mac}...")
+    ##    elif isinstance(ports,tuple) and len(ports) == 2:
+    ##        print(f"Scanning ports {ports[0]}-{ports[1]} on interface {name} with MAC {src_mac}...")
+    ##    elif isinstance(ports,list) and len(ports) > 3:
+    ##        print(f"Scanning ports [{ports[0]},...,{ports[len(ports)-1]}] on interface {name} with MAC {src_mac}...")
+    ##    elif isinstance(ports,list):
+    ##        print(f"Scanning ports {ports} on interface {name} with MAC {src_mac}...")
+    ##
+    ##
+    ##    for src_ip, ip, dst_mac in ips[name]:
+    ##        res = parallel_port_scan(src_ip,ip,ports,iface.max_workers,name,log)
+    ##        print(f"Port scan results on {ip} with MAC {dst_mac}: {res}")
+    ##        data.add_port_scan(src_mac,dst_mac,ip,res)
 
 ###############################################################
 # x. Helpers
@@ -279,7 +368,7 @@ def port_scan(ciface:list[str],dst_mac:str,dst_ip:str,port:int,log:Optional[bool
         return ('',None)
     return (str(ans[TCP].flags), raw(ans[0]).hex())
 
-def port_scan2(info:tuple[str,str,int,str],timeout:int=2)-> tuple[int,str,str]:
+def port_scan2(info:tuple[str,str,int],timeout:int=2)-> tuple[int,str,str]:
     """
     Runs a TCP SYN scan on the given IP and port.   
     Returns a tuple with the IP, port, TCP flags and raw packet data.
@@ -293,26 +382,32 @@ def port_scan2(info:tuple[str,str,int,str],timeout:int=2)-> tuple[int,str,str]:
     :return: Tuple containing the port, TCP flags and raw packet data in hex format
     :rtype: tuple[int, str, str]
     """
-    if len(info) != 4:
+    if len(info) != 3:
         raise ValueError("info must be a tuple with 4 elements: (src_ip, dst_ip, dst_port)")
-    if info[2] < 0 or info[2] > 65535:
+    
+    src_ip, dst_ip, dst_port = info
+    if dst_port < 0 or dst_port > 65535:
         raise ValueError("Port must be between 0 and 65535")
-    if ipaddress.ip_address(info[0]).version == 6:
-        ans = srp1(IPv6(src=info[0],dst=info[1])/TCP(sport=RandShort(),dport=info[2],flags="S"), timeout=timeout,verbose=False)
+    if ipaddress.ip_address(src_ip).version == 6:
+        ans = srp1(IPv6(src=src_ip,dst=dst_ip)/TCP(sport=RandShort(),dport=dst_port,flags="S"), timeout=timeout,verbose=False)
         # ans = srp1(IPv6(src=info[0],dst=info[1])/TCP(sport=RandShort(),dport=info[2],flags="S"), timeout=timeout,verbose=False, threaded=False)
         # ans = srp1flood(IPv6(src=info[0],dst=info[1])/TCP(sport=RandShort(),dport=info[2],flags="S"), timeout=timeout,verbose=False,iface=info[3])
         # ans = sendp1
         # ans = sendp(Ether()/IPv6(src=info[0],dst=info[1])/TCP(sport=RandShort(),dport=info[2],flags="S"),verbose=False,iface=info[3])
     else:
-        ans = srp1(IP(src=info[0],dst=info[1])/TCP(sport=RandShort(),dport=info[2],flags="S"), timeout=timeout,verbose=False)
+        ans = srp1(IP(src=src_ip,dst=dst_ip)/TCP(sport=RandShort(),dport=dst_port,flags="S"), timeout=timeout,verbose=False)
         # ans = srp1(IP(src=info[0],dst=info[1])/TCP(sport=RandShort(),dport=info[2],flags="S"), timeout=timeout,verbose=False, threaded=False)
         # ans = srp1flood(IP(src=info[0],dst=info[1])/TCP(sport=RandShort(),dport=info[2],flags="S"), timeout=timeout,verbose=False,iface=info[3])
         # ans = sendp(Ether()/IP(src=info[0],dst=info[1])/TCP(sport=RandShort(),dport=info[2],flags="S"), timeout=timeout,verbose=False,iface=info[3])
 
     # print(f"Ans: {ans}")
-    return (info[2],str(ans[TCP].flags), raw(ans[0]).hex()) if ans is not None else (info[2],'',None)
+    return (dst_port,str(ans[TCP].flags), raw(ans[0]).hex()) if ans is not None else (dst_port,'',None)
 
-def parallel_port_scan(src_ip:str,dst_ip:str,port_range:Union[int|list|tuple],max_workers:int,iface:str,log:Optional[bool]=None):
+def port_scan3(packets:list,timeout:int=2):
+    ans,_ = sr(packets, timeout=timeout,verbose=False)
+    return ans
+
+def parallel_port_scan(src_ip:str,dst_ip:str,port_range:List[int],max_workers:int,iface:str,log:Optional[bool]=None):
     """
     """
     data = {}
@@ -340,6 +435,41 @@ def parallel_port_scan(src_ip:str,dst_ip:str,port_range:Union[int|list|tuple],ma
                 data[port] = (flags,raw)
                 # print(f"Host {ip}: icmp type={data[ip][0]}, code={data[ip][1]}")
     return dict(sorted(data.items(), key=lambda item: int(item[0])))
+
+def parallel_port_scan2(src_ip:str,dst_ip:str,port_range:List[int],max_workers:int):
+    """
+    """
+    data = {}
+    ports = [(src_ip,dst_ip,p) for p in port_range]
+    ports = random.sample(ports,len(ports))           # Randomize order of ports
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        # for port, flags, raw in executor.map(port_scan2,ports):
+        #     data[port] = (flags,raw)
+        futures = [executor.submit(port_scan2,p) for p in ports]
+
+        for future in tqdm(as_completed(futures),total=len(futures),desc="Scanning ports..."):
+            port,flags,raw = future.result()
+            data[port] = (flags,raw)
+    return dict(sorted(data.items(), key=lambda item: int(item[0])))
+
+
+def parallel_port_scan3(src_ip:str,dst_ip:str,port_range:List[int],max_worker:int):
+    data = {}
+    if ipaddress.ip_address(src_ip).version == 6:
+        ip_pkt=IPv6(src=src_ip,dst=dst_ip)
+    else:
+        ip_pkt=IP(src=src_ip,dst=dst_ip)
+    packets = [ip_pkt/TCP(dport=p, flags="S") for p in port_range]
+    packets = random.sample(packets,len(packets))
+
+    ans = port_scan3(packets)
+    for s,r in ans:
+        if r is not None and r.haslayer(TCP):
+            data[str(s[TCP].dport)]= (str(r[TCP].flags),raw(r).hex())
+    
+    return dict(sorted(data.items(), key=lambda item: int(item[0])))
+
 
 def ports_scan(ciface:CustomIfaces,dst_mac:str,dst_ip:str,port_range:Optional[int|list|tuple]=None,log:Optional[bool]=None):
     """
@@ -449,7 +579,10 @@ def parallel_ping_scan2(src_ip:str,src_msk:str,max_workers:int,log:Optional[bool
         # with ThreadPoolExecutor(max_workers=len(ips)) as executor:
             futures = [executor.submit(ping_scan2,ip) for ip in ips]
             # for future in as_completed(futures):
-            for future in tqdm(as_completed(futures), total=len(futures), desc=f"Scanning IPs on {network}..."):
+            # for future in tqdm(as_completed(futures), total=len(futures), desc=f"Scanning IPs on {network}..."):
+            #     ip, icmp_type, icmp_code, raw = future.result()
+            #     data[ip] = (icmp_type, icmp_code, raw)
+            for future in as_completed(futures):
                 ip, icmp_type, icmp_code, raw = future.result()
                 data[ip] = (icmp_type, icmp_code, raw)
     
@@ -462,7 +595,7 @@ def arp_scan(info:tuple[str,str,str],timeout:int=2):
 def parallel_arp_scan(ciface:tuple[str,str,str,int],max_worker:int,log:Optional[bool]=None):
     """
     Scans the network for MAC addresses using ARP requests.
-    :param ciface: CustomIfaces object containing interface information (name, mac, ip4, mask, max_workers)
+    :param ciface: Tuple containing interface information (name, mac, ip4, mask, max_workers)
     :param log: Optional boolean to enable logging
     :return: Dictionary with IP addresses as keys and tuples of (MAC address, raw packet data) as values
     :rtype: dict[str, tuple[str, str]]
@@ -476,5 +609,27 @@ def parallel_arp_scan(ciface:tuple[str,str,str,int],max_worker:int,log:Optional[
     ips = random.sample(ips,len(ips))
     with ThreadPoolExecutor(max_workers=max_worker) as executor:
         for ip,mac,raw in tqdm(executor.map(arp_scan,ips), total=len(ips),desc=f"Scanning MACs on {network}..."):
+            data[ip] = (mac,raw)
+    return dict(sorted(data.items(), key=lambda item: ipaddress.ip_address(item[0])))
+
+def parallel_arp_scan2(name:str,mac:str,ip:str,mask:str,max_worker:int,log:Optional[bool]=None):
+    """
+    Scans the network for MAC addresses using ARP requests.
+    :param iface: CustomIface object containing interface information
+    :param log: Optional boolean to enable logging
+    :return: Dictionary with IP addresses as keys and tuples of (MAC address, raw packet data) as values
+    :rtype: dict[str, tuple[str, str]]
+    """
+    data = {}
+    network = ipaddress.IPv4Network(f"{ip}/{mask}", strict=False)
+    ips = [(mac,name,str(ip)) for ip in network.hosts()]
+    
+    ips = random.sample(ips,len(ips))
+    with ThreadPoolExecutor(max_workers=max_worker) as executor:
+        # for ip,mac,raw in tqdm(executor.map(arp_scan,ips), total=len(ips),desc=f"Scanning MACs on {network}..."):
+        #     data[ip] = (mac,raw)
+        futures = [executor.submit(arp_scan, ip) for ip in ips]
+        for future in as_completed(futures):
+            ip,mac,raw = future.result()
             data[ip] = (mac,raw)
     return dict(sorted(data.items(), key=lambda item: ipaddress.ip_address(item[0])))
