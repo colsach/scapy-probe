@@ -6,102 +6,52 @@ import logging
 import threading
 import time
 import multiprocessing
-import ipaddress
 
-# for testting
+# for testing
 from config import ETH_IFACE
 
-## # data = PacketLogger()
-## manager = SharedPacketLogger
-## manager.start()
-## data = manager.PacketLogger()
-## 
-## stop_event = threading.Event()
-## def handle_exit(sig, frame):
-##     print(f"\n📦 Received signal {sig}. Cleaning up...")
-##     # packet_logger.save_to_json(data)
-##     data.save_to_json()
-##     manager.shutdown()
-##     sys.exit(0)
-## 
-## signal.signal(signal.SIGINT, handle_exit)
-## signal.signal(signal.SIGTERM, handle_exit)
-
-
-
 if __name__ == "__main__":
-    # ip = "192.168.1.1"
-    # addr = ipaddress.ip_address(ip)
-    # eth = ETH_IFACE
-    # net = ipaddress.ip_network(f"{ip}/255.255.255.0", strict=False)
-    # print(f"\n📦 Probing {eth} on network {net} with IP {addr}\n")
-    # data = PacketLogger()
+    scan_type = ['ALL']
     manager = SharedPacketLogger()
     manager.start()
     data = manager.PacketLogger()
-
-    stop_event = threading.Event()
     def handle_exit(sig, frame):
         print(f"\n📦 Received signal {sig}. Cleaning up...")
-        # packet_logger.save_to_json(data)
         data.save_to_json()
         manager.shutdown()
         sys.exit(0)
-
+    logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
+    # iface_manager = CustomIfacesManager(conf=conf, whitelist=ETH_IFACE)
+    iface_manager = CustomIfacesManager(conf=conf)
     signal.signal(signal.SIGINT, handle_exit)
     signal.signal(signal.SIGTERM, handle_exit)
 
-    print("\n🚀 Starting Probing...\n")
-    logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
-    iface_manager = CustomIfacesManager(conf=conf, whitelist=ETH_IFACE)
-    scan_type = ['ALL']
+    if 'ALL' in scan_type:
+        scan_type.extend(['PASSIVE', 'ACTIVE'])
 
-    print("\n🚀 Starting Sniffing...\n")
-    p_passive = multiprocessing.Process(target=passive.passive_probing, args=(iface_manager, stop_event, data, False))
-    p_passive.start()
-    time.sleep(5)
-
-    print("\n🚀 Starting Probing...\n")
-    p_active = multiprocessing.Process(target=active.active_probing, args=(iface_manager, data, scan_type, PORTS,True))
-    p_active.start()
-    p_active.join()
-
-    print("\n[*] Active probing completed. Terminating passive sniffer...")
-    p_passive.terminate()
-    p_passive.join()
-    print(f"\n📦 Done. Cleaning up...")
+    print("\n🚀 Starting Probing...")
+    probe_start = time.perf_counter()
+    if 'PASSIVE' in scan_type:
+        print("\n🚀 Starting Sniffing...")
+        p_passive = multiprocessing.Process(target=passive.passive_probing, args=(iface_manager, data, False))
+        p_passive.start()
+        time.sleep(2) 
+    
+    if 'ACTIVE' in scan_type:
+        print("\n🚀 Starting Active Probing...")
+        active_start = time.perf_counter()
+        p_active = multiprocessing.Process(target=active.active_probing, args=(iface_manager, data, scan_type, PORTS,True))
+        p_active.start()
+        p_active.join()
+        active_end = time.perf_counter()
+        print(f"[*] Active probing completed in {active_end - active_start:.6f} seconds.")
+        if 'PASSIVE' in scan_type:
+            print("\n🚀 Terminating Sniffing...")
+            p_passive.terminate()
+            p_passive.join()
+    
+    probe_end = time.perf_counter()
+    print(f"\n📦 Completed probing in {probe_end-probe_start:.6f}. Cleaning up...")
     data.save_to_json()
     manager.shutdown()
-
-## if __name__ == "__main__":
-##     print("\n🚀 Starting Probing...\n")
-##     logging.getLogger("scapy.runtime").setLevel(logging.ERROR)
-##     # scan_type = ['ALL']
-##     scan_type = ['ARP']
-##     # Example interface, replace with your actual interface
-##     # iface = ETH_IFACE
-##     # Call passive probing
-##     # blacklist = ['enx94e6ba6a3eb8', 'lo', 'docker*','virbr*','br-*']
-##     whitelist = [ETH_IFACE]
-##     iface_manager = CustomIfacesManager(conf=scapy.conf,whitelist=whitelist)
-##     # iface = CustomIfaces(conf,blacklist=blacklist)
-##     # passive.passive_probing(iface,stop_event,data,True)
-##     t = threading.Thread(target=passive.passive_probing,args=(iface,stop_event,data,False))
-##     t.start()
-##     time.sleep(5)
-##     print("\n[*] Stopping sniffing...")
-##     stop_event.set()
-##     t.join()
-##     # Call active probing (to be implemented)
-##     active.active_probing(iface,scan_type=scan_type,data=data,log=True)
-##     # Call passive probing (to be implemented)
-##     # t1 = threading.Thread(target=passive.passive_probing,args=(iface,data,True))
-##     # t2 = threading.Thread(target=active.active_probing,args=(iface,data,True))
-##     # t1.start()
-##     # t2.start()
-##     # t1.join()
-##     # t2.join()
-##     print(f"\n📦 Done. Cleaning up...")
-##     # packet_logger.save_to_json(data)
-##     data.save_to_json()
-## 
+    print("\n📦 Cleanup done. Shutting down...")
