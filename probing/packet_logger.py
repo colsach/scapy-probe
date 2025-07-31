@@ -3,6 +3,7 @@ import json
 import ipaddress
 import threading
 from multiprocessing.managers import BaseManager
+from multiprocessing import Manager
 from typing import Optional, Tuple, Union
 from .definitions import *
 from scapy.all import *
@@ -17,37 +18,70 @@ class PacketLogger:
     def __init__(self,filename:Optional[str]=None, log:Optional[bool]=None):
         self.log = log if log is not None else False
         self.filename = filename if filename is not None else 'packet_log.json'
-        self.__data = {'active': {}, 'passive': {}}
+        self._manager = Manager()
+        # self.__data = {'active': {}, 'passive': {}}
+        self.__data = self._manager.dict()
+        _ = self.__create_dict(self.__data, 'active')
+        _ = self.__create_dict(self.__data, 'passive')
         self.__dtype = 'passive'
-        self.__lock = {
-            'active': threading.Lock(),
-            'passive': threading.Lock()
-        }
+        # self.__lock = {
+        #     'active': threading.Lock(),
+        #     'passive': threading.Lock()
+        # }
+        self.lock = self._manager.RLock()
         self.__context = threading.local()
         self.__context.dtype = self.__dtype
 
-    def __init_new_mac(self, mac: str) -> None:
+    def __create_dict(self, container, key):
+        """
+        Create a dictionary if it does not exist in the container.
+        """
+        if key not in container:
+            container[key] = self._manager.dict()
+        return container[key]
+    def __create_list(self, container, key):
+        """
+        Create a list if it does not exist in the container.
+        """
+        if key not in container:
+            container[key] = self._manager.list()
+        return container[key]
+    
+    def __init_new_mac(self, mac: str) -> Union[None,dict]:
         """
         Initialize a new MAC address entry in the data dictionary.
         """
-        if mac not in self.__data[self.__dtype]:
-            self.__data[self.__dtype][mac] = {}
+        # if mac not in self.__data[self.__dtype]:
+        #     self.__data[self.__dtype][mac] = {}
+        with self.__lock:
+            return self.__create_dict(self.__data[self.__dtype], mac)
+        return None
     
     def __init_new_sum(self, mac: str) -> None:
         """
         Initialize a new summary entry for a given MAC address.
         """
-        self.__init_new_mac(mac)
-        if 'summary' not in self.__data[self.__dtype][mac]:
-            self.__data[self.__dtype][mac]['summary'] = {}
+        # self.__init_new_mac(mac)
+        # if 'summary' not in self.__data[self.__dtype][mac]:
+        #     self.__data[self.__dtype][mac]['summary'] = {}
+        with self.__lock:
+            new_mac = self.__init_new_mac(mac)
+            if new_mac is not None: 
+                return self.__create_dict(new_mac, 'summary')
+        return None
     
     def __init_new_sum_list(self, mac: str, item: str) -> None:
         """
         Initialize a new summary list for a given MAC address and item.
         """
-        self.__init_new_sum(mac)
-        if item not in self.__data[self.__dtype][mac]['summary']:
-            self.__data[self.__dtype][mac]['summary'][item] = []
+        # self.__init_new_sum(mac)
+        # if item not in self.__data[self.__dtype][mac]['summary']:
+        #     self.__data[self.__dtype][mac]['summary'][item] = []
+        with self.__lock:
+            new_sum = self.__init_new_sum(mac)
+            if new_sum is not None:
+                return self.__create_list(new_sum, item)
+        return None
 
     def __get_dtype(self) -> str:
         """
@@ -115,17 +149,25 @@ class PacketLogger:
         """
         Add a destination MAC address to the summary.
         """
-        self.__init_new_sum_list(src_mac, 'dst_macs')
-        if dst_mac not in self.__data[self.__dtype][src_mac]['summary']['dst_macs']:
-            self.__data[self.__dtype][src_mac]['summary']['dst_macs'].append(dst_mac)
+        # self.__init_new_sum_list(src_mac, 'dst_macs')
+        # if dst_mac not in self.__data[self.__dtype][src_mac]['summary']['dst_macs']:
+        #     self.__data[self.__dtype][src_mac]['summary']['dst_macs'].append(dst_mac)
+        with self.__lock:
+            new_sum = self.__init_new_sum(src_mac,'dst_macs')
+            if new_sum is not None and dst_mac not in new_sum:
+                new_sum.append(dst_mac)
     
     def add_sum_ethertype(self, src_mac: str, ether_type: int, dtype='passive') -> None:
         """
         Add an EtherType to the summary.
         """
-        self.__init_new_sum_list(src_mac, 'ether_types')
-        if ether_type not in self.__data[self.__dtype][src_mac]['summary']['ether_types']:
-            self.__data[self.__dtype][src_mac]['summary']['ether_types'].append(ether_type)
+        # self.__init_new_sum_list(src_mac, 'ether_types')
+        # if ether_type not in self.__data[self.__dtype][src_mac]['summary']['ether_types']:
+        #     self.__data[self.__dtype][src_mac]['summary']['ether_types'].append(ether_type)
+        with self.__lock:
+            new_sum = self.__init_new_sum(src_mac,'ether_types')
+            if new_sum is not None and ether_type not in new_sum:
+                new_sum.append(ether_type)
         
     def add_sum_hwtype(self, src_mac: str, hw_type: int, dtype='passive') -> None:
         """
@@ -882,7 +924,6 @@ class CustomIface:
         """
         return self.name == id or self.mac == id or id in self.ip4 or id in self.ip6
     
-
 class CustomIfacesManager:
     """
     Custom Ifaces Manager class to handle multiple interfaces.
