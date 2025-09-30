@@ -16,7 +16,7 @@ class PacketLogger:
     ###############################################################
     def __init__(self,filename:Optional[str]=None, log:Optional[bool]=None):
         self.log = log if log is not None else False
-        self.filename = filename if filename is not None else 'packet_log.json'
+        self.filename = filename if filename is not None else 'inventory.json'
         self.__data = {'active': {}, 'passive': {}}
         self.__dtype = 'passive'
         self.__lock = {
@@ -250,7 +250,7 @@ class PacketLogger:
             if str(ETHER_TYPES[ether_type]) not in self.__data[self.__dtype][src_mac][dst_mac]:
                 self.__data[self.__dtype][src_mac][dst_mac][str(ETHER_TYPES[ether_type])] = {}
 
-    def add_arp(self, src_mac:str, src_ip:str, dst_mac:str, dst_ip:str, hwtype:int, op:int, raw:Optional[str]=None) -> None:
+    def add_arp(self, src_mac:str, src_ip:str, dst_mac:str, dst_ip:str, hwtype:int, op:int, vlan:Optional[Tuple[int,int,int]]=None, raw:Optional[str]=None) -> None:
         """
         Add an ARP entry to destination MAC address dictionary.
         """
@@ -259,7 +259,7 @@ class PacketLogger:
         self.add_sum_layer(src_mac, 'ARP')
         hw_type = HARDWARE_TYPES[hwtype] if hwtype in HARDWARE_TYPES else str(hwtype)
         op_type = ARP_OPERATIONS[op] if op in ARP_OPERATIONS else str(op)
-        
+
         if hw_type not in self.__data[self.__dtype][src_mac][dst_mac]['ARP']:
             self.__data[self.__dtype][src_mac][dst_mac]['ARP'][hw_type] = {}
 
@@ -285,8 +285,8 @@ class PacketLogger:
             self.add_sum_hwtype(dst_mac, hwtype)
         else:
             return
-        
-    def add_ndp(self, src_mac:str, src_ip:str, dst_mac:str, dst_ip:str, nd_type:int,options:Optional[str]=None,raw:Optional[str]=None,) -> None:
+
+    def add_ndp(self, src_mac:str, src_ip:str, dst_mac:str, dst_ip:str, nd_type:int,options:Optional[str]=None,vlan:Optional[Tuple[int,int,int]]=None,raw:Optional[str]=None) -> None:
         """
         Add an NDP entry to destination MAC address dictionary.
         nd_type can be 'NS', 'NA', 'RS' or 'RA'
@@ -377,7 +377,7 @@ class PacketLogger:
         if proto not in self.__data[self.__dtype][src_mac][dst_mac][ip_version][dst_ip]:
             self.__data[self.__dtype][src_mac][dst_mac][ip_version][dst_ip][proto] = {}
 
-    def add_icmp(self, src_mac: str, dst_mac: str, dst_ip: str, icmp_type: int, icmp_code: int,raw:Optional[str]=None) -> None:
+    def add_icmp(self, src_mac: str, dst_mac: str, dst_ip: str, icmp_type: int, icmp_code: int, vlan:Optional[Tuple[int,int,int]]=None, raw:Optional[str]=None) -> None:
         """
         Add an ICMP entry to the destination IP address dictionary.
         """
@@ -423,7 +423,7 @@ class PacketLogger:
         if str(port) not in self.__data[self.__dtype][src_mac][dst_mac][ip_version][dst_ip][proto]:
             self.__data[self.__dtype][src_mac][dst_mac][ip_version][dst_ip][proto][str(port)] = {}
 
-    def add_raw_data(self, src_mac: str, dst_mac: str, dst_ip: str, protocol: int, port: int, raw:Optional[str]=None) -> None:
+    def add_raw_data(self, src_mac: str, dst_mac: str, dst_ip: str, protocol: int, port: int, vlan:Optional[Tuple[int,int,int]]=None, raw:Optional[str]=None) -> None:
         """
         Add raw data to the destination port entry.
         """

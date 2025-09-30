@@ -8,6 +8,7 @@ import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import multiprocessing
 import time
+import subprocess, signal
 
 ###############################################################
 # x. Layer 2 (Ether, Dot3, ...)
@@ -59,6 +60,21 @@ def handle_IFACES_scan(iface_manager:CustomIfacesManager, data:PacketLogger, sca
         futures = [executor.submit(handle_IFACE_scan,(name,iface,data,scan_type,ports,log)) for name, iface in iface_manager.get_ifaces()]
         for future in as_completed(futures): pass
             
+def handle_traffic(iface:CustomIface,stop_event):
+    """
+    Handles traffic on the specified interface.
+    :param iface: CustomIface object with interface information
+    :return: None
+    """
+    print(f"🚦 Monitoring traffic on interface {iface.name}...")
+    ## cap = pyshark.LiveCapture(interface=iface.name, bpf_filter="icmp or arp or tcp", output_file=f"active_{iface.name}.pcapng")
+    ## # sniff = cap.sniff_continuously()
+    ## try:
+    ##     while not stop_event.is_set():
+    ##         cap.sniff_continuously()
+    ## finally:
+    ##     cap.close()                     # flush & close pcap
+    ##     print(f"🛑 Stopped monitoring traffic on {iface.name}.")
 
 
 def handle_IFACE_scan(input:Tuple[str,CustomIface,PacketLogger,list[str],Union[int,list,tuple[int,int]],bool]):
@@ -75,7 +91,13 @@ def handle_IFACE_scan(input:Tuple[str,CustomIface,PacketLogger,list[str],Union[i
     name, iface, data, scan_type, ports, log = input
     if log == True:
         print(f"\n🚀 Starting scan on interface {name}...\n")
-    
+        # stop_event = multiprocessing.Event()
+        # p_traffic = multiprocessing.Process(target=handle_traffic, args=(iface,stop_event))
+        # p_traffic.start()
+        # time.sleep(0.5)
+        # proc = subprocess.Popen(["dumpcap", "-i", iface.name, "-b", "filesize:10240", "-w", f"active_{iface.name}.pcapng"])
+        proc = subprocess.Popen(["tcpdump", "-i", iface.name, "-s", "0", "-w", f"/workspace/traffic/active_{iface.name}.pcap", "-C", "10"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
     if 'ARP' in scan_type:
         p_arp = multiprocessing.Process(target=handle_ARP_scan, args=(iface,data,log))
         p_arp.start()
@@ -90,6 +112,15 @@ def handle_IFACE_scan(input:Tuple[str,CustomIface,PacketLogger,list[str],Union[i
         p_port = multiprocessing.Process(target=handle_PORT_scan, args=(iface,data,ports,log))
         p_port.start()
         p_port.join()
+
+    if log == True:
+        # print(f"\n🚦 Terminating traffic monitoring on interface {name}.")
+        # p_traffic.terminate()
+        # stop_event.set()
+        # p_traffic.join()
+        if proc:
+            proc.send_signal(signal.SIGINT)
+            proc.wait()
 
 def handle_ARP_scan(iface:CustomIface,data:PacketLogger,log:bool):
     """"""
@@ -143,6 +174,8 @@ def handle_PORT_scan(iface:CustomIface,data:PacketLogger,ports:Union[int,list,tu
         output = f"\n🚀 Starting PORT scan {ports} over interface {iface.name}"
 
     for ip,mac in data.get_ips_2():
+        if ip not in IP_LIST:
+            continue
         if not iface.ip_in_net(ip):
             continue
         src_ip = iface.get_net_ip_by_ip(ip)

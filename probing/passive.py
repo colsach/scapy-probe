@@ -151,10 +151,14 @@ def handle_ARP(pkt,data:PacketLogger,log:bool=False,log_raw:bool=False) -> None:
         print(f"ARP Packet: {src_ip} -> {dst_ip}; HW Type: {hwt}; P Type: {ptype} Operation: {o}; srcMAC: {src_mac}; dstMAC: {dst_mac}")
 
     data.add_sum_layer(pkt[Ether].src,'ARP')
-    if log_raw == True:
-        data.add_arp(src_mac,src_ip,dst_mac,dst_ip, hwtype, op, raw(pkt).hex())
+    if pkt.haslayer(Dot1Q):
+        vlan = (pkt[Dot1Q].prio, pkt[Dot1Q].dei, pkt[Dot1Q].vlan)
     else:
-        data.add_arp(src_mac,src_ip,dst_mac,dst_ip, hwtype, op)
+        vlan = None
+    if log_raw == True:
+        data.add_arp(src_mac,src_ip,dst_mac,dst_ip, hwtype, op, vlan,raw(pkt).hex())
+    else:
+        data.add_arp(src_mac,src_ip,dst_mac,dst_ip, hwtype, op,vlan)
     return
 
 ###############################################################
@@ -267,10 +271,14 @@ def handle_ICMP(pkt,data:PacketLogger,log:bool=False,log_raw:bool=False) -> None
         print(f"ICMP Packet: {src} -> {dst}; Type: {t}; Code: {code}; chksum: 0x{chksum:x}; Id: {id}; Seq: {seq}; ts_ori: {ts_ori}; ts_rx:{ts_rx}; ts_tx:{ts_tx}; GW: {gw}; ptr: {ptr}; res: {res}; Addr. Mask: {addr_mask}; nexthopmtu: {nexthopmtu}; extpad: {extpad}; ext: {ext}")
     
     data.add_sum_layer(pkt[Ether].src,"ICMP")
-    if log_raw == True:
-        data.add_icmp( pkt[Ether].src, pkt[Ether].dst, dst, t, code, raw(pkt).hex())
+    if pkt.haslayer(Dot1Q):
+        vlan = (pkt[Dot1Q].prio, pkt[Dot1Q].dei, pkt[Dot1Q].vlan)
     else:
-        data.add_icmp( pkt[Ether].src, pkt[Ether].dst, dst, t, code)
+        vlan = None
+    if log_raw == True:
+        data.add_icmp( pkt[Ether].src, pkt[Ether].dst, dst, t, code, vlan,raw(pkt).hex())
+    else:
+        data.add_icmp( pkt[Ether].src, pkt[Ether].dst, dst, t, code,vlan)
     return
 
 def handle_ICMPv6(pkt, data:PacketLogger, log:bool=False, log_raw:bool=False) -> None:
@@ -303,10 +311,16 @@ def handle_ICMPv6(pkt, data:PacketLogger, log:bool=False, log_raw:bool=False) ->
     data.add_sum_layer(pkt[Ether].src,"ICMPv6")
     data.add_sum_src_ip(pkt[Ether].src,src)
     data.add_sum_dst_ip(pkt[Ether].src,dst)
-    if log_raw == True:
-        data.add_icmp(pkt[Ether].src, pkt[Ether].dst, dst, icmp_layer[0], icmp_layer[1], raw(pkt).hex())
+
+    if pkt.haslayer(Dot1Q):
+        vlan = (pkt[Dot1Q].prio, pkt[Dot1Q].dei, pkt[Dot1Q].vlan)
     else:
-        data.add_icmp(pkt[Ether].src, pkt[Ether].dst, dst, icmp_layer[0], icmp_layer[1])
+        vlan = None
+
+    if log_raw == True:
+        data.add_icmp(pkt[Ether].src, pkt[Ether].dst, dst, icmp_layer[0], icmp_layer[1], vlan,raw(pkt).hex())
+    else:
+        data.add_icmp(pkt[Ether].src, pkt[Ether].dst, dst, icmp_layer[0], icmp_layer[1],vlan)
     return
 
 def handle_ICMPv6_NA(pkt,data:PacketLogger,log:bool=False,log_raw:bool=False) -> None:
@@ -329,11 +343,14 @@ def handle_ICMPv6_NA(pkt,data:PacketLogger,log:bool=False,log_raw:bool=False) ->
             print(f"ICMPv6 NA Packet: {src} -> {dst}; Type: {t}; Code: {code}; LLADDR: {lladdr}")
         else:
             print(f"ICMPv6 NA Packet: {src} -> {dst}; Type: {t}; Code: {code}")
-
-    if log_raw == True:
-        data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['NA'],lladdr,raw=raw(pkt).hex())
+    if pkt.haslayer(Dot1Q):
+        vlan = (pkt[Dot1Q].prio, pkt[Dot1Q].dei, pkt[Dot1Q].vlan)
     else:
-        data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['NA'],lladdr)
+        vlan = None
+    if log_raw == True:
+        data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['NA'],lladdr,vlan,raw=raw(pkt).hex())
+    else:
+        data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['NA'],lladdr,vlan)
     return
 
 def handle_ICMPv6_NS(pkt,data:PacketLogger,log:bool=False,log_raw:bool=False) -> None:
@@ -360,10 +377,15 @@ def handle_ICMPv6_NS(pkt,data:PacketLogger,log:bool=False,log_raw:bool=False) ->
         else:
             print(f"ICMPv6 NS Packet: {src} -> {dst}; Type: {t}; Code: {code}")
 
-    if log_raw == True:
-        data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['NS'],lladdr,raw=raw(pkt).hex())
+    if pkt.haslayer(Dot1Q):
+        vlan = (pkt[Dot1Q].prio, pkt[Dot1Q].dei, pkt[Dot1Q].vlan)
     else:
-        data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['NS'],lladdr)
+        vlan = None
+
+    if log_raw == True:
+        data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['NS'],lladdr,vlan,raw=raw(pkt).hex())
+    else:
+        data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['NS'],lladdr,vlan)
     return
 
 def handle_ICMPv6_RS(pkt,data:PacketLogger,log:bool=False,log_raw:bool=False) -> None:
@@ -386,11 +408,14 @@ def handle_ICMPv6_RS(pkt,data:PacketLogger,log:bool=False,log_raw:bool=False) ->
             print(f"ICMPv6 RS Packet: {src} -> {dst}; Type: {t}; Code: {code}; LLADDR: {lladdr}")
         else:
             print(f"ICMPv6 RS Packet: {src} -> {dst}; Type: {t}; Code: {code}")
-
-    if log_raw == True:
-        data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['RS'],lladdr,raw=raw(pkt).hex())
+    if pkt.haslayer(Dot1Q):
+        vlan = (pkt[Dot1Q].prio, pkt[Dot1Q].dei, pkt[Dot1Q].vlan)
     else:
-        data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['RS'],lladdr)
+        vlan = None
+    if log_raw == True:
+        data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['RS'],lladdr,vlan,raw=raw(pkt).hex())
+    else:
+        data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['RS'],lladdr,vlan)
     return
 
 def handle_ICMPv6_RA(pkt,data:PacketLogger,log:bool=False,log_raw:bool=False) -> None:
@@ -414,10 +439,15 @@ def handle_ICMPv6_RA(pkt,data:PacketLogger,log:bool=False,log_raw:bool=False) ->
         else:
             print(f"ICMPv6 RA Packet: {src} -> {dst}; Type: {t}; Code: {code}")
 
-    if log_raw == True:
-        data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['RA'],lladdr,raw=raw(pkt).hex())
+    if pkt.haslayer(Dot1Q):
+        vlan = (pkt[Dot1Q].prio, pkt[Dot1Q].dei, pkt[Dot1Q].vlan)
     else:
-        data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['RA'],lladdr)
+        vlan = None
+
+    if log_raw == True:
+        data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['RA'],lladdr,vlan,raw=raw(pkt).hex())
+    else:
+        data.add_ndp(pkt[Ether].src,src,pkt[Ether].dst,dst,NDP_TYPES['RA'],lladdr,vlan)
     return
 
 ###############################################################
@@ -441,6 +471,11 @@ def handle_TCP(pkt,data:PacketLogger,log:bool=False,log_raw:bool=False) -> None:
         dst_ip = pkt[IP].dst
         proto = pkt[IP].proto
 
+    if pkt.haslayer(Dot1Q):
+        vlan = (pkt[Dot1Q].prio, pkt[Dot1Q].dei, pkt[Dot1Q].vlan)
+    else:
+        vlan = None
+
     dst_port = pkt[TCP].dport
     src_port = pkt[TCP].sport
 
@@ -459,9 +494,9 @@ def handle_TCP(pkt,data:PacketLogger,log:bool=False,log_raw:bool=False) -> None:
         # data.add_sum_src_port(pkt[Ether].src,src_port)
         # data.add_sum_dst_port(pkt[Ether].src,dst_port)
         if log_raw == True:
-            data.add_raw_data(pkt[Ether].src,pkt[Ether].dst,dst_ip,proto,dst_port,raw(pkt).hex())
+            data.add_raw_data(pkt[Ether].src,pkt[Ether].dst,dst_ip,proto,dst_port,vlan,raw(pkt).hex())
         else:
-            data.add_raw_data(pkt[Ether].src,pkt[Ether].dst,dst_ip,proto,dst_port)
+            data.add_raw_data(pkt[Ether].src,pkt[Ether].dst,dst_ip,proto,dst_port,vlan)
     except Exception as e:
         print(f"[*] Error while handling TCP packet: {e}")
     return
@@ -484,6 +519,11 @@ def handle_UDP(pkt,data:PacketLogger,log:bool=False,log_raw:bool=False) -> None:
         dst_ip = pkt[IP].dst
         proto = pkt[IP].proto
 
+    if pkt.haslayer(Dot1Q):
+        vlan = (pkt[Dot1Q].prio, pkt[Dot1Q].dei, pkt[Dot1Q].vlan)
+    else:
+        vlan = None
+
     src_port = pkt[UDP].sport
     dst_port = pkt[UDP].dport
 
@@ -497,7 +537,7 @@ def handle_UDP(pkt,data:PacketLogger,log:bool=False,log_raw:bool=False) -> None:
     data.add_sum_src_port(pkt[Ether].src,src_port)
     data.add_sum_dst_port(pkt[Ether].src,dst_port)
     if log_raw == True:
-        data.add_raw_data(pkt[Ether].src,pkt[Ether].dst,dst_ip,proto,dst_port,raw(pkt).hex())
+        data.add_raw_data(pkt[Ether].src,pkt[Ether].dst,dst_ip,proto,dst_port,vlan,raw(pkt).hex())
     else:
-        data.add_raw_data(pkt[Ether].src,pkt[Ether].dst,dst_ip,proto,dst_port)
+        data.add_raw_data(pkt[Ether].src,pkt[Ether].dst,dst_ip,proto,dst_port,vlan)
     return
