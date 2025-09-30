@@ -8,9 +8,7 @@ This tool includes the following scans for active discovery:
 |Name|Description|
 |----|-----------|
 |ARP|This scan is used to identify MAC addresses of IPv4 hosts on the same network.|
-|NDP|This scan is used to identify MAC addresses of IPv6 hosts on the same network.|
 |ICMP|This scan is used to identify IPv4 hosts on the same network and their status.|
-|ICMPv6|This scan is used to identify IPv6 hosts on the same network and their status.|
 |TCP-SYN|This scan is used to identify open ports on IPv4 and IPv6 hosts on the same network.|
 
 
@@ -31,29 +29,3 @@ The following list presents the protocols sniffed by this tool.
 |ICMPv6||
 |TCP||
 |UDP||
-
-## TASKS
-
-|Name|To Do|In Progress|In Review|Done|Cancelled|
-|----|:---:|:---------:|:-------:|:--:|:-------:|
-|Implement passive Ethernet||||X||
-|Implement passive 802.3||||X||
-|Implement passive VLAN||||X||
-|Implement passive ARP||||X||
-|Implement passive NDP||||X||
-|Implement passive IPv4||||X||
-|Implement passive IPv6||||X||
-|Implement passive ICMP||||X||
-|Implement passive ICMPv6||||X||
-|Implement passive TCP||||X||
-|Implement passive UDP||||X||
-|Implement ARP-SCAN||||X||
-|Implement NDP-SCAN||X||||
-|Implement ICMP-SCAN||||X||
-|Implement ICMPv6-SCAN||X||||
-|Implement TCP-SYN-SCAN||||X||
-|Implement Data logging|||X||
-|Implement Threading| |X| | | |
-|Implement Multiprocessing |X| | | | |
-|Implement routing graph |X| | | | |
-| | | | | | |

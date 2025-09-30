@@ -1,6 +1,13 @@
 # Personal files
 *.json
 config.py
+logs*/
+csv*/
+microlab*/
+plotting/
+probing/metrics*
+probing/pipeline*
+traffic/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
