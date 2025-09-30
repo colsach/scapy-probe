@@ -4,19 +4,6 @@ import resource
 # x. Probing Tool Definitions
 ###############################################################
 
-SCAN_TYPES = {
-    -1: "all",
-    0:  "passive",
-    1:  "active",
-    2:  "mac",
-    3:  "ip",
-    4:  "arp",
-    5:  "icmp",
-    6:  "tcp",
-    7:  "udp",
-}
-SCAN_TYPES.update({v: k for k,v in SCAN_TYPES.items()})
-
 MAX_WORKERS = 100
 WIN_MAX_WORKERS = 64
 MAX_IPS = 2000
@@ -24,10 +11,10 @@ CPU_INTERVAL = 0.1  # seconds
 
 PORTS = (1,65535)
 # PORTS = [22,80,443,8080]
+
 ###############################################################
 # x. Protocol Definitions
 ###############################################################
-
 
 ETHER_TYPES = {
     0x0800:"IPv4"        , # IP (IPv4)                                   

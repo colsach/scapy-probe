@@ -8,7 +8,6 @@ import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import multiprocessing
 import time
-import subprocess, signal
 
 ###############################################################
 # x. Layer 2 (Ether, Dot3, ...)
@@ -59,22 +58,6 @@ def handle_IFACES_scan(iface_manager:CustomIfacesManager, data:PacketLogger, sca
     with ThreadPoolExecutor(max_workers=iface_manager.max_workers) as executor:
         futures = [executor.submit(handle_IFACE_scan,(name,iface,data,scan_type,ports,log)) for name, iface in iface_manager.get_ifaces()]
         for future in as_completed(futures): pass
-            
-def handle_traffic(iface:CustomIface,stop_event):
-    """
-    Handles traffic on the specified interface.
-    :param iface: CustomIface object with interface information
-    :return: None
-    """
-    print(f"🚦 Monitoring traffic on interface {iface.name}...")
-    ## cap = pyshark.LiveCapture(interface=iface.name, bpf_filter="icmp or arp or tcp", output_file=f"active_{iface.name}.pcapng")
-    ## # sniff = cap.sniff_continuously()
-    ## try:
-    ##     while not stop_event.is_set():
-    ##         cap.sniff_continuously()
-    ## finally:
-    ##     cap.close()                     # flush & close pcap
-    ##     print(f"🛑 Stopped monitoring traffic on {iface.name}.")
 
 
 def handle_IFACE_scan(input:Tuple[str,CustomIface,PacketLogger,list[str],Union[int,list,tuple[int,int]],bool]):
@@ -91,12 +74,7 @@ def handle_IFACE_scan(input:Tuple[str,CustomIface,PacketLogger,list[str],Union[i
     name, iface, data, scan_type, ports, log = input
     if log == True:
         print(f"\n🚀 Starting scan on interface {name}...\n")
-        # stop_event = multiprocessing.Event()
-        # p_traffic = multiprocessing.Process(target=handle_traffic, args=(iface,stop_event))
-        # p_traffic.start()
-        # time.sleep(0.5)
-        # proc = subprocess.Popen(["dumpcap", "-i", iface.name, "-b", "filesize:10240", "-w", f"active_{iface.name}.pcapng"])
-        proc = subprocess.Popen(["tcpdump", "-i", iface.name, "-s", "0", "-w", f"/workspace/traffic/active_{iface.name}.pcap", "-C", "10"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    
 
     if 'ARP' in scan_type:
         p_arp = multiprocessing.Process(target=handle_ARP_scan, args=(iface,data,log))
@@ -113,19 +91,14 @@ def handle_IFACE_scan(input:Tuple[str,CustomIface,PacketLogger,list[str],Union[i
         p_port.start()
         p_port.join()
 
-    if log == True:
-        # print(f"\n🚦 Terminating traffic monitoring on interface {name}.")
-        # p_traffic.terminate()
-        # stop_event.set()
-        # p_traffic.join()
-        if proc:
-            proc.send_signal(signal.SIGINT)
-            proc.wait()
-
 def handle_ARP_scan(iface:CustomIface,data:PacketLogger,log:bool):
-    """"""
-    
-
+    """
+    Handles the ARP scan on the specified interface.
+    :param iface: CustomIface object with interface information
+    :param data: PacketLogger object to store scan results
+    :param log: Optional boolean to enable logging
+    :return: None
+    """
     ips = iface.get_ips_4()
     for ip, _,_, msk in ips:
         if log == True:
@@ -150,7 +123,7 @@ def handle_PING_scan(iface:CustomIface,data:PacketLogger,log:bool):
         if log == True:
             print(f"\n🚀 Starting PING scan on interface {iface.name} and IP {ip}...")
         ping_start = time.perf_counter()
-        res = parallel_ping_scan2(ip,msk, iface.max_workers,log)
+        res = parallel_ping_scan(ip,msk, iface.max_workers,log)
         ping_end = time.perf_counter()
         if res is None:
             continue
@@ -161,6 +134,12 @@ def handle_PING_scan(iface:CustomIface,data:PacketLogger,log:bool):
    
 def handle_PORT_scan(iface:CustomIface,data:PacketLogger,ports:Union[int,list,tuple[int,int]],log:bool):
     """
+    Handles the PORT scan on the specified interface.
+    :param iface: CustomIface object with interface information
+    :param data: PacketLogger object to store scan results
+    :param ports: Ports to scan (int for single port, list for multiple ports, tuple for port range)
+    :param log: Optional boolean to enable logging
+    :return: None
     """
     if isinstance(ports,int):
         ports = [ports]
@@ -174,8 +153,6 @@ def handle_PORT_scan(iface:CustomIface,data:PacketLogger,ports:Union[int,list,tu
         output = f"\n🚀 Starting PORT scan {ports} over interface {iface.name}"
 
     for ip,mac in data.get_ips_2():
-        if ip not in IP_LIST:
-            continue
         if not iface.ip_in_net(ip):
             continue
         src_ip = iface.get_net_ip_by_ip(ip)
@@ -231,7 +208,7 @@ def parallel_port_scan(src_ip:str,dst_ip:str,port_range:List[int],max_worker:int
     
     return dict(sorted(data.items(), key=lambda item: int(item[0])))
 
-def ping_scan2(ips:tuple[str,str],timeout:int=2) -> tuple[str,int,int,str]:
+def ping_scan(ips:tuple[str,str],timeout:int=2) -> tuple[str,int,int,str]:
     if ipaddress.ip_address(ips[0]).version == 6:
         ans = sr1(IPv6(src=ips[0],dst=ips[1])/ICMP(), timeout=timeout,verbose=False)
     else:
@@ -240,35 +217,6 @@ def ping_scan2(ips:tuple[str,str],timeout:int=2) -> tuple[str,int,int,str]:
     return res
 
 def parallel_ping_scan(src_ip:str,src_msk:str,max_workers:int,log:Optional[bool]=None, timeout:int=2) -> dict[str,tuple[int,int,str]]:
-    """
-    Performs a parallel PING scan on the specified source IP and mask.
-    :param src_ip: Source IP address to scan from
-    :param src_msk: Source network mask
-    :param max_workers: Maximum number of worker threads to use for scanning
-    :param log: Optional boolean to enable logging
-    :param timeout: Timeout for each PING request in seconds
-    :return: Dictionary with IP addresses as keys and tuples of (ICMP type, ICMP code, raw packet data) as values
-    :rtype: dict[str, tuple[int, int, str]]
-    """
-    data = {}
-    if ipaddress.ip_address(src_ip).version == 6:
-        network = ipaddress.IPv6Network(f"{src_ip}/{src_msk}", strict=False)
-        if network.num_addresses > MAX_IPS:
-            print(f"Warning: Network {src_ip}/{src_msk} has more than {MAX_IPS} hosts. Skipping PING scan to avoid performance issues.")
-            return
-        packets = [IPv6(src=src_ip,dst=str(ip))/ICMP() for ip in network.hosts()]
-
-    else:
-        network = ipaddress.IPv4Network(f"{src_ip}/{src_msk}", strict=False)
-        packets = [IP(src=src_ip,dst=str(ip))/ICMP() for ip in network.hosts()]
-    
-    ans = l3_scan(packets, timeout=timeout, verbose=False)
-    for s,r in ans:
-        if r is not None and r.haslayer(ICMP):
-            data[str(s[IP].dst)] = (r[ICMP].type, r[ICMP].code, raw(r).hex())
-    return dict(sorted(data.items(), key=lambda item: ipaddress.ip_address(item[0])))
-
-def parallel_ping_scan2(src_ip:str,src_msk:str,max_workers:int,log:Optional[bool]=None, timeout:int=2) -> dict[str,tuple[int,int,str]]:
     """
     """
     data = {}
@@ -286,7 +234,7 @@ def parallel_ping_scan2(src_ip:str,src_msk:str,max_workers:int,log:Optional[bool
         ips = [(str(src_ip),str(ip)) for ip in network.hosts()]
         ips = random.sample(ips,len(ips))               # Randomize order
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            futures = [executor.submit(ping_scan2,ip) for ip in ips]
+            futures = [executor.submit(ping_scan,ip) for ip in ips]
             for future in as_completed(futures):
                 ip, icmp_type, icmp_code, raw = future.result()
                 data[ip] = (icmp_type, icmp_code, raw)

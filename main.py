@@ -1,4 +1,3 @@
-import shutil
 from scapy.all import conf
 import signal
 import sys
@@ -7,10 +6,7 @@ import logging
 import argparse
 import time
 import multiprocessing
-import psutil
 import json
-import datetime
-import os
 # for testing
 from config import ETH_IFACE
 
